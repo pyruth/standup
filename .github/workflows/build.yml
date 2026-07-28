@@ -53,6 +53,17 @@ jobs:
       - run: ${{ matrix.command }}
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - name: Verify macOS app bundle
+        if: matrix.name == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="release/mac-universal/StandUp.app"
+          helper="$app/Contents/Resources/app.asar.unpacked/node_modules/get-windows/main"
+          test -x "$app/Contents/MacOS/StandUp"
+          test -x "$helper"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          file "$app/Contents/MacOS/StandUp" | grep -q "universal binary"
       - uses: actions/upload-artifact@v4
         with:
           name: StandUp-${{ matrix.name }}

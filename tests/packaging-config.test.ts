@@ -5,7 +5,12 @@ import { describe, expect, it } from 'vitest';
 interface PackageConfiguration {
   scripts: Record<string, string>;
   build: {
+    afterPack: string;
     files: string[];
+    mac: {
+      hardenedRuntime: boolean;
+      identity: string;
+    };
   };
 }
 
@@ -31,5 +36,11 @@ describe('release packaging configuration', () => {
         '!node_modules/get-windows/lib/binding/napi-9-darwin-unknown-arm64/**/*'
       ])
     );
+  });
+
+  it('ad-hoc signs the universal macOS bundle after fixing helper permissions', () => {
+    expect(configuration.build.afterPack).toBe('scripts/after-pack.cjs');
+    expect(configuration.build.mac.identity).toBe('-');
+    expect(configuration.build.mac.hardenedRuntime).toBe(false);
   });
 });

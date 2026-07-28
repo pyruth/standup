@@ -1,6 +1,6 @@
 {
   "name": "standup",
-  "version": "1.0.3",
+  "version": "1.0.4",
   "description": "A private, activity-aware stand-up reminder for Windows and macOS.",
   "type": "module",
   "main": "dist/main/main.js",
@@ -34,6 +34,7 @@
     "copyright": "Copyright © 2026 ioiostudios",
     "asar": true,
     "npmRebuild": false,
+    "afterPack": "scripts/after-pack.cjs",
     "asarUnpack": [
       "node_modules/get-windows/**/*"
     ],
@@ -89,6 +90,7 @@
       "icon": "build/icon.png",
       "category": "public.app-category.healthcare-fitness",
       "artifactName": "StandUp-${version}-macOS-${arch}.${ext}",
+      "identity": "-",
       "hardenedRuntime": false,
       "gatekeeperAssess": false
     }
