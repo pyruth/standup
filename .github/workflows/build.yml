@@ -37,9 +37,11 @@ jobs:
           - name: Windows
             os: windows-latest
             command: npm run dist:win
+            artifact: release/*.exe
           - name: macOS
             os: macos-latest
             command: npm run dist:mac
+            artifact: release/*.dmg
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -54,5 +56,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: StandUp-${{ matrix.name }}
-          path: release/*
+          path: ${{ matrix.artifact }}
           if-no-files-found: error
