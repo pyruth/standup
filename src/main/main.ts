@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
@@ -12,7 +13,6 @@ import {
   screen,
   Tray
 } from 'electron';
-import { activeWindow } from 'get-windows';
 import {
   IDLE_THRESHOLDS,
   IPC_CHANNELS,
@@ -23,6 +23,7 @@ import {
   type SupportedPlatform
 } from '../shared/types.js';
 import { isBlacklistedPath, normalizeAppPath } from './path-identity.js';
+import { detectForegroundAppPath } from './foreground-app.js';
 import { SettingsStore } from './settings-store.js';
 import { TimerEngine } from './timer-engine.js';
 
@@ -30,8 +31,11 @@ const currentDirectory = path.dirname(fileURLToPath(import.meta.url));
 const rendererDirectory = path.resolve(currentDirectory, '../renderer');
 const projectDirectory = path.resolve(currentDirectory, '../..');
 const platform = process.platform as SupportedPlatform;
-const singleInstanceLock = app.requestSingleInstanceLock();
 const smokeTest = process.argv.includes('--smoke-test');
+if (smokeTest && process.env.STANDUP_SMOKE_USER_DATA) {
+  app.setPath('userData', process.env.STANDUP_SMOKE_USER_DATA);
+}
+const singleInstanceLock = app.requestSingleInstanceLock();
 
 let settingsStore: SettingsStore;
 let timerEngine: TimerEngine;
@@ -57,6 +61,17 @@ function getResourcePath(filename: string): string {
 
 function getPreloadPath(): string {
   return path.join(currentDirectory, 'preload.cjs');
+}
+
+function getForegroundDetectorRoot(): string {
+  return app.isPackaged
+    ? path.join(
+        process.resourcesPath,
+        'app.asar.unpacked',
+        'node_modules',
+        'get-windows'
+      )
+    : path.join(projectDirectory, 'node_modules', 'get-windows');
 }
 
 function formatDuration(milliseconds: number): string {
@@ -202,11 +217,10 @@ function showReminder(preview = false, display = true): void {
 
 async function getActiveAppPath(): Promise<string | undefined> {
   try {
-    const result = await activeWindow({
-      accessibilityPermission: false,
-      screenRecordingPermission: false
+    return await detectForegroundAppPath({
+      platform,
+      packageRoot: getForegroundDetectorRoot()
     });
-    return result?.owner.path;
   } catch (error) {
     console.warn('Unable to inspect the foreground application.', error);
     return undefined;
@@ -491,8 +505,15 @@ async function runSmokeTest(): Promise<void> {
       throw new Error('The secure preload bridge was not exposed.');
     }
 
-    await getActiveAppPath();
+    await detectForegroundAppPath({
+      platform,
+      packageRoot: getForegroundDetectorRoot()
+    });
     showReminder(true, false);
+    const smokeResultPath = process.env.STANDUP_SMOKE_RESULT;
+    if (smokeResultPath) {
+      fs.writeFileSync(smokeResultPath, 'ok', 'utf8');
+    }
     setTimeout(() => app.quit(), 1_000);
   } catch (error) {
     console.error('StandUp smoke test failed.', error);

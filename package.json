@@ -1,6 +1,6 @@
 {
   "name": "standup",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "A private, activity-aware stand-up reminder for Windows and macOS.",
   "type": "module",
   "main": "dist/main/main.js",
