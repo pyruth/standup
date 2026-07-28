@@ -312,6 +312,10 @@ function rebuildTrayMenu(): void {
       label: 'Settings…',
       click: createSettingsWindow
     },
+    {
+      label: 'About StandUp',
+      click: () => app.showAboutPanel()
+    },
     { type: 'separator' },
     {
       label: 'Quit StandUp',
@@ -531,6 +535,13 @@ app.whenReady().then(() => {
   settingsStore = new SettingsStore(
     path.join(app.getPath('userData'), 'settings.json')
   );
+  app.setAboutPanelOptions({
+    applicationName: 'StandUp',
+    applicationVersion: app.getVersion(),
+    version: app.getVersion(),
+    copyright: 'Copyright © 2026 ioiostudios',
+    credits: 'A healthy desktop companion by ioiostudios.'
+  });
   const settings = settingsStore.get();
   timerEngine = new TimerEngine(
     settings.reminderIntervalMinutes,

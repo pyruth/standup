@@ -1,10 +1,10 @@
 {
   "name": "standup",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A private, activity-aware stand-up reminder for Windows and macOS.",
   "type": "module",
   "main": "dist/main/main.js",
-  "author": "pyruth",
+  "author": "ioiostudios",
   "license": "UNLICENSED",
   "scripts": {
     "build": "npm run build:main && npm run build:renderer",
@@ -31,6 +31,7 @@
   "build": {
     "appId": "com.pyruth.standup",
     "productName": "StandUp",
+    "copyright": "Copyright © 2026 ioiostudios",
     "asar": true,
     "npmRebuild": false,
     "asarUnpack": [
