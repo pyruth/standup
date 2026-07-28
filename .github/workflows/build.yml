@@ -1,0 +1,58 @@
+name: Build StandUp
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build
+
+  package:
+    name: Package ${{ matrix.name }}
+    needs: verify
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Windows
+            os: windows-latest
+            command: npm run dist:win
+          - name: macOS
+            os: macos-latest
+            command: npm run dist:mac
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: ${{ matrix.command }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StandUp-${{ matrix.name }}
+          path: release/*
+          if-no-files-found: error

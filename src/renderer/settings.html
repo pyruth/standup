@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:"
+    />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StandUp Settings</title>
+    <link rel="stylesheet" href="./settings.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="hero">
+        <div class="brand-mark" aria-hidden="true">↑</div>
+        <div>
+          <p class="eyebrow">HEALTHY DESKTOP COMPANION</p>
+          <h1>StandUp</h1>
+          <p class="subtitle">
+            A quiet reminder to move throughout your active workday.
+          </p>
+        </div>
+      </header>
+
+      <section class="status-card" aria-live="polite">
+        <div>
+          <span class="status-dot"></span>
+          <span id="status-label">Starting…</span>
+        </div>
+        <button id="preview-button" class="secondary-button" type="button">
+          Preview reminder
+        </button>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">TIMING</p>
+            <h2>Your movement rhythm</h2>
+          </div>
+        </div>
+
+        <label class="field">
+          <span>
+            <strong>Remind me after</strong>
+            <small>Active keyboard and mouse time</small>
+          </span>
+          <select id="interval-select" aria-label="Reminder interval"></select>
+        </label>
+
+        <label class="field">
+          <span>
+            <strong>Consider me idle after</strong>
+            <small>The timer pauses when no input is detected</small>
+          </span>
+          <select id="idle-select" aria-label="Idle threshold"></select>
+        </label>
+
+        <label class="field toggle-field">
+          <span>
+            <strong>Launch at login</strong>
+            <small>Keep StandUp ready in the background</small>
+          </span>
+          <input id="login-toggle" type="checkbox" role="switch" />
+        </label>
+      </section>
+
+      <section class="card">
+        <div class="section-heading blacklist-heading">
+          <div>
+            <p class="eyebrow">DO NOT DISTURB</p>
+            <h2>Blacklisted apps</h2>
+            <p>
+              A due reminder waits until you switch away from these apps.
+            </p>
+          </div>
+          <button id="add-app-button" class="primary-button" type="button">
+            Add app
+          </button>
+        </div>
+
+        <ul id="blacklist" class="blacklist"></ul>
+        <p id="empty-blacklist" class="empty-state">
+          No apps are blacklisted. Reminders can appear over any active app.
+        </p>
+      </section>
+
+      <footer>
+        <span>Private by design · Everything stays on this computer</span>
+        <span id="save-state">Settings saved automatically</span>
+      </footer>
+    </main>
+    <script type="module" src="./settings.ts"></script>
+  </body>
+</html>
