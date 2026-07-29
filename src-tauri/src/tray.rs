@@ -58,12 +58,17 @@ pub fn create(app: &App) -> tauri::Result<()> {
             let _ = status_for_events.set_text(status_label(app));
         });
 
-    if let Some(icon) = app.default_window_icon() {
-        builder = builder.icon(icon.clone());
-    }
     #[cfg(target_os = "macos")]
     {
-        builder = builder.icon_as_template(true);
+        let icon =
+            tauri::image::Image::from_bytes(include_bytes!("../icons/tray-icon-template@2x.png"))?;
+        builder = builder.icon(icon).icon_as_template(true);
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        if let Some(icon) = app.default_window_icon() {
+            builder = builder.icon(icon.clone());
+        }
     }
 
     builder.build(app)?;
