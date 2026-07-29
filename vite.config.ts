@@ -5,6 +5,13 @@ export default defineConfig({
   root: resolve(import.meta.dirname, 'src/renderer'),
   publicDir: false,
   base: './',
+  clearScreen: false,
+  server: {
+    strictPort: true,
+    watch: {
+      ignored: ['**/src-tauri/**']
+    }
+  },
   build: {
     outDir: resolve(import.meta.dirname, 'dist/renderer'),
     emptyOutDir: true,

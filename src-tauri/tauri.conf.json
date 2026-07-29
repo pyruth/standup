@@ -1,0 +1,76 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "StandUp",
+  "version": "2.0.0",
+  "identifier": "com.ioiostudio.standup",
+  "build": {
+    "beforeDevCommand": "npm run dev:web",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build:web",
+    "frontendDist": "../dist/renderer"
+  },
+  "app": {
+    "macOSPrivateApi": true,
+    "windows": [
+      {
+        "label": "settings",
+        "title": "StandUp Settings",
+        "width": 760,
+        "height": 820,
+        "minWidth": 640,
+        "minHeight": 680,
+        "visible": false,
+        "resizable": true,
+        "fullscreen": false,
+        "focus": false,
+        "url": "settings.html"
+      }
+    ],
+    "security": {
+      "csp": {
+        "default-src": "'self'",
+        "connect-src": "ipc: http://ipc.localhost",
+        "font-src": "'self'",
+        "img-src": "'self' asset: http://asset.localhost data:",
+        "object-src": "'none'",
+        "script-src": "'self'",
+        "style-src": "'self'"
+      },
+      "capabilities": [
+        "settings",
+        "popup"
+      ]
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "nsis",
+      "dmg"
+    ],
+    "category": "HealthcareAndFitness",
+    "copyright": "Copyright © 2026 ioiostudio",
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ],
+    "longDescription": "A private, offline-first desktop companion that reminds you to stand and move.",
+    "shortDescription": "Private stand-up reminders.",
+    "windows": {
+      "nsis": {
+        "displayLanguageSelector": false,
+        "installMode": "currentUser"
+      },
+      "webviewInstallMode": {
+        "type": "downloadBootstrapper",
+        "silent": true
+      }
+    },
+    "macOS": {
+      "minimumSystemVersion": "12.0"
+    }
+  }
+}

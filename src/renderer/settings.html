@@ -2,10 +2,6 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta
-      http-equiv="Content-Security-Policy"
-      content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:"
-    />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StandUp Settings</title>
     <link rel="stylesheet" href="./settings.css" />
@@ -24,10 +20,10 @@
           <p class="eyebrow">HEALTHY DESKTOP COMPANION</p>
           <div class="brand-line">
             <h1>Stand<span>Up</span></h1>
-            <p class="company-name">by ioiostudios</p>
+            <p class="company-name">by ioiostudio</p>
           </div>
           <p class="subtitle">
-            A quiet reminder to move throughout your active workday.
+            A quiet, offline reminder to move throughout your active workday.
           </p>
         </div>
       </header>
@@ -44,12 +40,9 @@
 
       <section class="card">
         <div class="section-heading">
-          <div>
-            <p class="eyebrow">TIMING</p>
-            <h2>Your movement rhythm</h2>
-          </div>
+          <p class="eyebrow">TIMING</p>
+          <h2>Your movement rhythm</h2>
         </div>
-
         <label class="field">
           <span>
             <strong>Remind me after</strong>
@@ -57,7 +50,6 @@
           </span>
           <select id="interval-select" aria-label="Reminder interval"></select>
         </label>
-
         <label class="field">
           <span>
             <strong>Consider me idle after</strong>
@@ -65,38 +57,94 @@
           </span>
           <select id="idle-select" aria-label="Idle threshold"></select>
         </label>
-
         <label class="field toggle-field">
           <span>
             <strong>Launch at login</strong>
-            <small>Keep StandUp ready in the background</small>
+            <small>Enabled by default and stored only on this device</small>
           </span>
           <input id="login-toggle" type="checkbox" role="switch" />
         </label>
       </section>
 
       <section class="card">
-        <div class="section-heading blacklist-heading">
-          <div>
-            <p class="eyebrow">DO NOT DISTURB</p>
-            <h2>Blacklisted apps</h2>
-            <p>
-              A due reminder waits until you switch away from these apps.
-            </p>
-          </div>
-          <button id="add-app-button" class="primary-button" type="button">
-            Add app
+        <div class="section-heading">
+          <p class="eyebrow">APPEARANCE</p>
+          <h2>Where the reminder appears</h2>
+        </div>
+        <div class="field placement-field">
+          <span>
+            <strong>Screen position</strong>
+            <small>Choose one of nine positions</small>
+          </span>
+          <div
+            id="position-grid"
+            class="position-grid"
+            role="radiogroup"
+            aria-label="Reminder position"
+          ></div>
+        </div>
+        <label class="field">
+          <span>
+            <strong>Monitor</strong>
+            <small>Falls back to the primary display if disconnected</small>
+          </span>
+          <select id="monitor-select" aria-label="Reminder monitor"></select>
+        </label>
+        <label class="field">
+          <span>
+            <strong>Sound</strong>
+            <small>Silent by default; plays once with the reminder</small>
+          </span>
+          <select id="sound-select" aria-label="Reminder sound"></select>
+        </label>
+      </section>
+
+      <section class="card">
+        <div class="section-heading">
+          <p class="eyebrow">YOUR ANIMATION</p>
+          <h2>Bring your own creative idea</h2>
+          <p>
+            StandUp never contacts an AI provider. Add your idea, copy the
+            technical prompt, and use any provider you trust.
+          </p>
+        </div>
+        <label class="stacked-field">
+          <strong>Your creative direction</strong>
+          <textarea
+            id="creativity-input"
+            rows="3"
+            maxlength="1200"
+            placeholder="Describe any character, visual style, colors, message, or movement you want…"
+          ></textarea>
+        </label>
+        <div class="prompt-actions">
+          <button id="copy-prompt-button" class="primary-button" type="button">
+            Copy AI prompt
+          </button>
+          <button
+            id="reset-animation-button"
+            class="secondary-button"
+            type="button"
+          >
+            Reset to default
           </button>
         </div>
-
-        <ul id="blacklist" class="blacklist"></ul>
-        <p id="empty-blacklist" class="empty-state">
-          No apps are blacklisted. Reminders can appear over any active app.
+        <textarea
+          id="prompt-preview"
+          class="prompt-preview"
+          readonly
+          aria-label="Generated technical prompt"
+        ></textarea>
+        <p id="animation-status" class="privacy-note"></p>
+        <p class="privacy-note">
+          Only upload images you own or have permission to use. Custom GIF
+          import will decode, validate, and sanitize the file before StandUp
+          stores a private copy.
         </p>
       </section>
 
       <footer>
-        <span>© 2026 ioiostudios · Private by design</span>
+        <span>© 2026 ioiostudio · Private by design</span>
         <span id="save-state">Settings saved automatically</span>
       </footer>
     </main>

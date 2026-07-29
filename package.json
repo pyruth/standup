@@ -1,98 +1,32 @@
 {
   "name": "standup",
-  "version": "1.0.4",
-  "description": "A private, activity-aware stand-up reminder for Windows and macOS.",
+  "version": "2.0.0",
+  "description": "A private, offline-first stand-up reminder for Windows and Apple Silicon macOS.",
+  "private": true,
   "type": "module",
-  "main": "dist/main/main.js",
-  "author": "ioiostudios",
+  "author": "ioiostudio",
   "license": "UNLICENSED",
   "scripts": {
-    "build": "npm run build:main && npm run build:renderer",
-    "build:main": "tsc -p tsconfig.main.json",
-    "build:renderer": "vite build --config vite.config.ts",
-    "start": "npm run build && electron .",
+    "dev": "tauri dev",
+    "dev:web": "vite --config vite.config.ts",
+    "build": "npm run typecheck && npm run build:web",
+    "build:web": "vite build --config vite.config.ts",
+    "tauri": "tauri",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
-    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
-    "dist:mac": "npm run build && electron-builder --mac dmg --universal --publish never"
+    "typecheck": "tsc -p tsconfig.renderer.json --noEmit",
+    "test:rust": "cargo test --manifest-path src-tauri/Cargo.toml",
+    "dist:win": "tauri build --bundles nsis --target x86_64-pc-windows-msvc",
+    "dist:mac": "tauri build --bundles dmg --target aarch64-apple-darwin"
   },
   "dependencies": {
-    "get-windows": "9.3.0"
+    "@tauri-apps/api": "2.11.1"
   },
   "devDependencies": {
+    "@tauri-apps/cli": "2.11.4",
     "@types/node": "24.10.1",
-    "electron": "43.2.0",
-    "electron-builder": "26.15.3",
     "typescript": "7.0.2",
     "vite": "8.1.5",
     "vitest": "4.1.10"
-  },
-  "build": {
-    "appId": "com.pyruth.standup",
-    "productName": "StandUp",
-    "copyright": "Copyright © 2026 ioiostudios",
-    "asar": true,
-    "npmRebuild": false,
-    "afterPack": "scripts/after-pack.cjs",
-    "asarUnpack": [
-      "node_modules/get-windows/**/*"
-    ],
-    "directories": {
-      "output": "release",
-      "buildResources": "build"
-    },
-    "files": [
-      "dist/**/*",
-      "package.json",
-      "!node_modules/get-windows/lib/binding/napi-6-darwin-unknown-arm64/**/*",
-      "!node_modules/get-windows/lib/binding/napi-6-darwin-unknown-x64/**/*",
-      "!node_modules/get-windows/lib/binding/napi-9-darwin-unknown-arm64/**/*",
-      "!node_modules/get-windows/node_modules/**/*",
-      "!node_modules/@mapbox/node-pre-gyp/**/*",
-      "!node_modules/node-gyp/**/*",
-      "!node_modules/node-addon-api/**/*"
-    ],
-    "extraResources": [
-      {
-        "from": "build/icon.png",
-        "to": "icon.png"
-      }
-    ],
-    "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": [
-            "x64"
-          ]
-        }
-      ],
-      "icon": "build/icon.ico",
-      "artifactName": "StandUp-${version}-Windows-${arch}.${ext}"
-    },
-    "nsis": {
-      "oneClick": false,
-      "allowToChangeInstallationDirectory": true,
-      "createDesktopShortcut": true,
-      "createStartMenuShortcut": true,
-      "shortcutName": "StandUp"
-    },
-    "mac": {
-      "target": [
-        {
-          "target": "dmg",
-          "arch": [
-            "universal"
-          ]
-        }
-      ],
-      "icon": "build/icon.png",
-      "category": "public.app-category.healthcare-fitness",
-      "artifactName": "StandUp-${version}-macOS-${arch}.${ext}",
-      "identity": "-",
-      "hardenedRuntime": false,
-      "gatekeeperAssess": false
-    }
   }
 }

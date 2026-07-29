@@ -1,96 +1,87 @@
 # StandUp
 
-StandUp is a private, activity-aware desktop reminder for Windows and macOS.
-After a configurable amount of active keyboard and mouse time, a silent animated
-character slides in from the bottom-right of the primary display for eight
-seconds. The reminder is always on top, does not take focus, and is completely
-click-through.
+StandUp is a private, offline-first desktop companion by ioiostudio. It counts
+active computer time and shows a silent, click-through animated reminder to
+stand and move.
 
-## Features
+The `v2` branch is migrating StandUp from Electron to Tauri 2. The Electron
+source remains temporarily as a parity reference; v2 builds use the Rust
+backend in `src-tauri`.
 
-- 45-minute default reminder interval, with 15/30/45/60/90/120-minute choices
-- Configurable 1/2/3/5/10-minute idle cutoff, defaulting to 3 minutes
-- Automatic pauses while idle, locked, suspended, or manually paused
-- Tray/menu-bar status, 30-minute and 1-hour pauses, preview, settings, and quit
-- Foreground-only application blacklist
-- Launch at login, enabled by default in packaged builds
-- Local-only settings with no account, network calls, analytics, or activity log
-- Transparent, silent, focus-safe reminder over normal and full-screen apps
+## v2 targets
+
+- Windows 10/11 x64 with an NSIS installer
+- Apple Silicon macOS 12 or newer with a DMG
+
+StandUp v2 does not contain an updater, analytics, telemetry, accounts, ads,
+remote assets, HTTP client, localhost server, or runtime network calls.
+
+## Current v2 foundation
+
+- 45-minute default reminder interval with 15/30/45/60/90/120-minute choices
+- Configurable 1/2/3/5/10-minute idle cutoff
+- Rust-owned in-memory timer and local settings
+- Launch at login enabled by default
+- Tray/menu-bar controls for pause, resume, preview, settings, and quit
+- Reused, always-on-top, non-focusable, click-through eight-second popup
+- Nine reminder positions and automatic/specific monitor selection
+- Local creative prompt builder for making a custom GIF with any AI provider
+- Silent-by-default sound preference model
+- Per-window Tauri capabilities and a strict local-only CSP
+- Single-instance behavior
+
+See [V2_MIGRATION.md](./V2_MIGRATION.md) for the remaining work before v2 is
+release-ready, including secure custom GIF import, sounds, foreground-app
+blacklisting, and platform smoke tests.
 
 ## Development
 
-Requirements:
+Windows prerequisites:
 
 - Node.js 22 or newer
-- npm
+- Rust stable with the MSVC toolchain
+- Microsoft C++ Build Tools with Desktop development with C++
+- Microsoft Edge WebView2
 
-Install and run:
+Install and validate:
 
 ```powershell
 npm install
-npm start
-```
-
-`npm start` builds the TypeScript main process and Vite renderer, then launches
-Electron. Login launch is intentionally not registered from a development build.
-
-Useful commands:
-
-```powershell
 npm test
 npm run typecheck
-npm run build
+npm run build:web
+cargo test --manifest-path src-tauri/Cargo.toml
+```
+
+Run the Tauri development application:
+
+```powershell
+npm run dev
+```
+
+Build installers:
+
+```powershell
 npm run dist:win
 npm run dist:mac
 ```
 
-The macOS DMG must be produced on macOS. The GitHub Actions workflow builds the
-Windows x64 installer and a universal macOS DMG on native runners.
+The macOS command must run on Apple Silicon macOS. GitHub Actions uses native
+Windows x64 and Apple Silicon macOS runners.
 
-## Application behavior
+## Installer warnings
 
-StandUp samples system idle time once per second. Active time is accumulated
-only while the idle duration is below the configured threshold. A long scheduler
-gap, sleep, lock, or suspend is never treated as active time.
+Development installers are unsigned:
 
-Blacklisted application paths are compared only with the foreground
-application. Time inside a blacklisted application still counts; if the reminder
-becomes due there, it waits until focus moves elsewhere. Failure to inspect the
-foreground application fails open, so the reminder remains available.
+- Windows SmartScreen may display an “unrecognized app” warning.
+- macOS Gatekeeper may require Control-clicking the app, choosing **Open**, and
+  confirming the first launch.
 
-Changing the reminder interval resets current progress. Changing the idle
-threshold applies immediately. Timer progress and manual pause state are kept in
-memory and start fresh after the app restarts. Preferences and blacklist entries
-are stored in Electron's per-user application data directory.
+Production distribution should use Windows code signing and Apple Developer ID
+signing/notarization.
 
-## Personal installer warnings
+## Privacy
 
-The generated installers are intentionally unsigned:
-
-- **Windows:** Microsoft Defender SmartScreen may show an “unrecognized app”
-  warning. Use **More info → Run anyway** only for an artifact you built or
-  downloaded from your own trusted workflow.
-- **macOS:** Gatekeeper may block the first launch. In Finder, Control-click
-  StandUp, choose **Open**, then confirm. System Settings may also offer an
-  **Open Anyway** action under Privacy & Security.
-
-Signing and notarization credentials are not included.
-
-## Privacy and permissions
-
-StandUp does not store activity history, window titles, URLs, or usage
-statistics. Foreground-app detection requests only the owning application path.
-On macOS, Accessibility and Screen Recording permission checks are disabled
-because the blacklist does not need window titles or browser data.
-
-## Release verification
-
-Before distributing a build:
-
-1. Run `npm test`, `npm run typecheck`, and `npm run build`.
-2. Confirm tray controls, settings persistence, pause/resume, and preview.
-3. Confirm the reminder appears on the primary display without taking focus and
-   that clicks pass through it.
-4. Confirm a due reminder is deferred in a blacklisted foreground app and appears
-   after switching away.
-5. Confirm login launch from an installed build.
+Preferences are stored only in the operating system’s per-user application-data
+directory. Active-time progress remains in memory and resets after the app
+restarts. The default animation is packaged inside the application.

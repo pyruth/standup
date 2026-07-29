@@ -191,6 +191,10 @@ select {
   cursor: pointer;
 }
 
+#monitor-select {
+  width: min(310px, 48vw);
+}
+
 select:focus-visible,
 button:focus-visible,
 input:focus-visible {
@@ -262,6 +266,12 @@ button:active {
 
 .primary-button:hover {
   background: #ff7849;
+}
+
+.primary-button:disabled,
+.secondary-button:disabled {
+  cursor: default;
+  opacity: 0.42;
 }
 
 .secondary-button {
@@ -344,6 +354,103 @@ footer {
 
 #save-state.saving {
   color: #ff9b58;
+}
+
+.placement-field {
+  min-height: 118px;
+}
+
+.position-grid {
+  display: grid;
+  flex: 0 0 auto;
+  grid-template-columns: repeat(3, 30px);
+  gap: 7px;
+  padding: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 14px;
+  background: rgba(7, 9, 13, 0.5);
+}
+
+.position-grid label {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: #2a2e38;
+  cursor: pointer;
+}
+
+.position-grid input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.position-grid span {
+  position: absolute;
+  inset: 9px;
+  border-radius: 50%;
+  background: #777e8c;
+  transition:
+    inset 140ms ease,
+    background 140ms ease,
+    box-shadow 140ms ease;
+}
+
+.position-grid input:checked + span {
+  inset: 6px;
+  background: #ff7045;
+  box-shadow: 0 0 0 4px rgba(255, 112, 69, 0.14);
+}
+
+.position-grid input:focus-visible + span {
+  outline: 2px solid #ffb07b;
+  outline-offset: 4px;
+}
+
+.stacked-field {
+  display: grid;
+  gap: 8px;
+  font-size: 14px;
+}
+
+textarea {
+  width: 100%;
+  resize: vertical;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 12px;
+  outline: none;
+  background: #20242d;
+  color: #f6f3ec;
+  font: inherit;
+  line-height: 1.5;
+}
+
+#creativity-input {
+  min-height: 92px;
+  padding: 12px;
+}
+
+.prompt-actions {
+  display: flex;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.prompt-preview {
+  min-height: 155px;
+  padding: 12px;
+  color: #aeb3be;
+  font-family: ui-monospace, "SFMono-Regular", Consolas, monospace;
+  font-size: 11px;
+}
+
+.privacy-note {
+  margin-top: 10px;
+  color: #888e9a;
+  font-size: 11px;
+  line-height: 1.5;
 }
 
 @media (max-width: 680px) {

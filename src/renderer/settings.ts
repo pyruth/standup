@@ -1,27 +1,42 @@
+import { standUpApi } from './tauri-api';
 import {
   IDLE_THRESHOLDS,
   REMINDER_INTERVALS,
+  REMINDER_POSITIONS,
+  REMINDER_SOUNDS,
+  type ReminderPosition,
+  type SettingsPatch,
   type StandUpSettings,
   type TimerStatus
-} from '../shared/types';
+} from './v2-types';
 
-const intervalSelect = document.querySelector<HTMLSelectElement>(
-  '#interval-select'
-)!;
-const idleSelect =
-  document.querySelector<HTMLSelectElement>('#idle-select')!;
-const loginToggle =
-  document.querySelector<HTMLInputElement>('#login-toggle')!;
-const blacklist = document.querySelector<HTMLUListElement>('#blacklist')!;
-const emptyBlacklist =
-  document.querySelector<HTMLElement>('#empty-blacklist')!;
-const statusLabel = document.querySelector<HTMLElement>('#status-label')!;
+const byId = <T extends HTMLElement>(id: string): T => {
+  const element = document.querySelector<T>(`#${id}`);
+  if (!element) {
+    throw new Error(`Missing settings control: ${id}`);
+  }
+  return element;
+};
+
+const intervalSelect = byId<HTMLSelectElement>('interval-select');
+const idleSelect = byId<HTMLSelectElement>('idle-select');
+const loginToggle = byId<HTMLInputElement>('login-toggle');
+const monitorSelect = byId<HTMLSelectElement>('monitor-select');
+const soundSelect = byId<HTMLSelectElement>('sound-select');
+const creativityInput = byId<HTMLTextAreaElement>('creativity-input');
+const statusLabel = byId<HTMLElement>('status-label');
 const statusCard = document.querySelector<HTMLElement>('.status-card')!;
-const saveState = document.querySelector<HTMLElement>('#save-state')!;
-const previewButton =
-  document.querySelector<HTMLButtonElement>('#preview-button')!;
-const addAppButton =
-  document.querySelector<HTMLButtonElement>('#add-app-button')!;
+const saveState = byId<HTMLElement>('save-state');
+const previewButton = byId<HTMLButtonElement>('preview-button');
+const copyPromptButton = byId<HTMLButtonElement>('copy-prompt-button');
+const resetAnimationButton = byId<HTMLButtonElement>(
+  'reset-animation-button'
+);
+const promptPreview = byId<HTMLTextAreaElement>('prompt-preview');
+const animationStatus = byId<HTMLElement>('animation-status');
+const positionGrid = byId<HTMLElement>('position-grid');
+
+let currentSettings: StandUpSettings | undefined;
 
 function createOptions(): void {
   for (const minutes of REMINDER_INTERVALS) {
@@ -29,45 +44,49 @@ function createOptions(): void {
   }
   for (const minutes of IDLE_THRESHOLDS) {
     idleSelect.add(
-      new Option(`${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`, String(minutes))
+      new Option(
+        `${minutes} ${minutes === 1 ? 'minute' : 'minutes'}`,
+        String(minutes)
+      )
     );
+  }
+  for (const sound of REMINDER_SOUNDS) {
+    soundSelect.add(new Option(sound.label, sound.value));
+  }
+  for (const [index, position] of REMINDER_POSITIONS.entries()) {
+    const input = document.createElement('input');
+    input.type = 'radio';
+    input.name = 'reminder-position';
+    input.value = position;
+    input.id = `position-${position}`;
+    input.setAttribute('aria-label', position.replace('-', ' '));
+
+    const label = document.createElement('label');
+    label.htmlFor = input.id;
+    label.title = position.replace('-', ' ');
+    label.style.setProperty('--grid-index', String(index));
+    label.append(input, document.createElement('span'));
+    positionGrid.append(label);
   }
 }
 
 function renderSettings(settings: StandUpSettings): void {
+  currentSettings = settings;
   intervalSelect.value = String(settings.reminderIntervalMinutes);
   idleSelect.value = String(settings.idleThresholdMinutes);
   loginToggle.checked = settings.launchAtLogin;
-
-  blacklist.replaceChildren();
-  for (const entry of settings.blacklistedApps) {
-    const item = document.createElement('li');
-    item.className = 'blacklist-item';
-
-    const details = document.createElement('div');
-    details.className = 'app-details';
-    const name = document.createElement('strong');
-    name.textContent = entry.name;
-    const appPath = document.createElement('small');
-    appPath.textContent = entry.path;
-    appPath.title = entry.path;
-    details.append(name, appPath);
-
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'remove-button';
-    remove.textContent = 'Remove';
-    remove.addEventListener('click', async () => {
-      setSaving(true);
-      renderSettings(await window.standUp.removeBlacklistedApp(entry.id));
-      setSaving(false);
-    });
-
-    item.append(details, remove);
-    blacklist.append(item);
+  soundSelect.value = settings.reminderSound;
+  monitorSelect.value = settings.selectedMonitor;
+  const position = document.querySelector<HTMLInputElement>(
+    `input[name="reminder-position"][value="${settings.reminderPosition}"]`
+  );
+  if (position) {
+    position.checked = true;
   }
-
-  emptyBlacklist.hidden = settings.blacklistedApps.length > 0;
+  animationStatus.textContent = settings.useCustomAnimation
+    ? 'Using your sanitized custom GIF'
+    : 'Using the built-in StandUp animation';
+  resetAnimationButton.disabled = !settings.useCustomAnimation;
 }
 
 function formatStatus(status: TimerStatus): string {
@@ -98,23 +117,81 @@ function renderStatus(status: TimerStatus): void {
   statusCard.classList.toggle('paused', status.isPaused);
 }
 
-function setSaving(saving: boolean): void {
-  saveState.textContent = saving ? 'Saving…' : 'Settings saved automatically';
+function setSaving(saving: boolean, message?: string): void {
+  saveState.textContent =
+    message ?? (saving ? 'Saving…' : 'Settings saved automatically');
   saveState.classList.toggle('saving', saving);
 }
 
-async function updateSettings(
-  patch: Parameters<typeof window.standUp.updateSettings>[0]
-): Promise<void> {
+async function updateSettings(patch: SettingsPatch): Promise<void> {
   setSaving(true);
   try {
-    renderSettings(await window.standUp.updateSettings(patch));
-  } finally {
+    renderSettings(await standUpApi.updateSettings(patch));
     setSaving(false);
+  } catch (error) {
+    setSaving(false, error instanceof Error ? error.message : String(error));
+  }
+}
+
+async function refreshMonitors(selectedMonitor = 'primary'): Promise<void> {
+  const monitors = await standUpApi.listMonitors();
+  monitorSelect.replaceChildren(
+    new Option('Primary Monitor (Automatic)', 'primary')
+  );
+  for (const monitor of monitors) {
+    const primary = monitor.primary ? ' · Primary' : '';
+    monitorSelect.add(
+      new Option(
+        `${monitor.name} · ${monitor.width}×${monitor.height}${primary}`,
+        monitor.fingerprint
+      )
+    );
+  }
+  monitorSelect.value = selectedMonitor;
+  if (!monitorSelect.value) {
+    monitorSelect.value = 'primary';
+  }
+}
+
+function technicalPrompt(): string {
+  const creativity = creativityInput.value.trim();
+  const creativeSection = creativity
+    ? `Creative direction from me:\n${creativity}\n\n`
+    : '';
+  return `${creativeSection}Create an animated GIF for a small desktop wellness reminder. Keep the creative style, subject, colors, composition, and motion open to the direction above.
+
+Technical delivery requirements:
+- GIF format with animation
+- Recommended canvas: 256 × 384 pixels
+- Maximum dimensions: 1024 × 1024 pixels
+- Maximum file size: 15 MB
+- Total duration: 0.5 to 8 seconds
+- Maximum 120 frames
+- Recommended frame rate: 4 to 12 FPS
+- Seamless infinite loop preferred
+- Transparency is optional
+- No audio
+- Avoid rapid flashing or strobing`;
+}
+
+async function copyPrompt(): Promise<void> {
+  const prompt = technicalPrompt();
+  promptPreview.value = prompt;
+  try {
+    await navigator.clipboard.writeText(prompt);
+    copyPromptButton.textContent = 'Copied';
+    window.setTimeout(() => {
+      copyPromptButton.textContent = 'Copy AI prompt';
+    }, 1_500);
+  } catch {
+    promptPreview.focus();
+    promptPreview.select();
+    setSaving(false, 'Select the prompt and copy it manually');
   }
 }
 
 createOptions();
+promptPreview.value = technicalPrompt();
 
 intervalSelect.addEventListener('change', () => {
   void updateSettings({
@@ -123,7 +200,6 @@ intervalSelect.addEventListener('change', () => {
     ) as StandUpSettings['reminderIntervalMinutes']
   });
 });
-
 idleSelect.addEventListener('change', () => {
   void updateSettings({
     idleThresholdMinutes: Number(
@@ -131,31 +207,55 @@ idleSelect.addEventListener('change', () => {
     ) as StandUpSettings['idleThresholdMinutes']
   });
 });
-
 loginToggle.addEventListener('change', () => {
   void updateSettings({ launchAtLogin: loginToggle.checked });
 });
-
+soundSelect.addEventListener('change', () => {
+  void updateSettings({
+    reminderSound: soundSelect.value as StandUpSettings['reminderSound']
+  });
+});
+monitorSelect.addEventListener('change', () => {
+  void updateSettings({ selectedMonitor: monitorSelect.value });
+});
+positionGrid.addEventListener('change', (event) => {
+  const input = event.target;
+  if (input instanceof HTMLInputElement) {
+    void updateSettings({
+      reminderPosition: input.value as ReminderPosition
+    });
+  }
+});
+creativityInput.addEventListener('input', () => {
+  promptPreview.value = technicalPrompt();
+});
 previewButton.addEventListener('click', () => {
-  void window.standUp.previewReminder();
+  void standUpApi.previewReminder();
+});
+copyPromptButton.addEventListener('click', () => {
+  void copyPrompt();
+});
+resetAnimationButton.addEventListener('click', async () => {
+  renderSettings(await standUpApi.resetCustomAnimation());
 });
 
-addAppButton.addEventListener('click', async () => {
-  setSaving(true);
-  try {
-    renderSettings(await window.standUp.chooseBlacklistedApp());
-  } finally {
-    setSaving(false);
-  }
-});
-
-void Promise.all([window.standUp.getSettings(), window.standUp.getStatus()]).then(
-  ([settings, status]) => {
+void standUpApi
+  .getSettings()
+  .then(async (settings) => {
+    await refreshMonitors(settings.selectedMonitor);
     renderSettings(settings);
-    renderStatus(status);
-  }
-);
+    renderStatus(await standUpApi.getTimerStatus());
+  })
+  .catch((error) => {
+    setSaving(false, error instanceof Error ? error.message : String(error));
+  });
 
-setInterval(() => {
-  void window.standUp.getStatus().then(renderStatus);
+window.setInterval(() => {
+  void standUpApi.getTimerStatus().then(renderStatus);
 }, 1_000);
+
+window.addEventListener('focus', () => {
+  if (currentSettings) {
+    void refreshMonitors(currentSettings.selectedMonitor);
+  }
+});

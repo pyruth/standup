@@ -1,9 +1,10 @@
-name: Build StandUp
+name: Build StandUp v2
 
 on:
   push:
     branches:
       - main
+      - v2
     tags:
       - "v*"
   pull_request:
@@ -14,18 +15,33 @@ permissions:
 
 jobs:
   verify:
-    name: Verify
-    runs-on: windows-latest
+    name: Verify web and Rust
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+          - os: macos-26
+            target: aarch64-apple-darwin
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+      - name: Select stable Rust
+        shell: bash
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add "${{ matrix.target }}"
       - run: npm ci
       - run: npm test
       - run: npm run typecheck
-      - run: npm run build
+      - run: npm run build:web
+      - run: cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
 
   package:
     name: Package ${{ matrix.name }}
@@ -34,14 +50,16 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - name: Windows
+          - name: Windows-x64
             os: windows-latest
+            target: x86_64-pc-windows-msvc
             command: npm run dist:win
-            artifact: release/*.exe
-          - name: macOS
-            os: macos-latest
+            artifact: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+          - name: macOS-Apple-Silicon
+            os: macos-26
+            target: aarch64-apple-darwin
             command: npm run dist:mac
-            artifact: release/*.dmg
+            artifact: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -49,21 +67,16 @@ jobs:
         with:
           node-version: 22
           cache: npm
+      - name: Select stable Rust
+        shell: bash
+        run: |
+          rustup update stable
+          rustup default stable
+          rustup target add "${{ matrix.target }}"
       - run: npm ci
       - run: ${{ matrix.command }}
         env:
-          CSC_IDENTITY_AUTO_DISCOVERY: "false"
-      - name: Verify macOS app bundle
-        if: matrix.name == 'macOS'
-        shell: bash
-        run: |
-          set -euo pipefail
-          app="release/mac-universal/StandUp.app"
-          helper="$app/Contents/Resources/app.asar.unpacked/node_modules/get-windows/main"
-          test -x "$app/Contents/MacOS/StandUp"
-          test -x "$helper"
-          codesign --verify --deep --strict --verbose=2 "$app"
-          file "$app/Contents/MacOS/StandUp" | grep -q "universal binary"
+          APPLE_SIGNING_IDENTITY: "-"
       - uses: actions/upload-artifact@v4
         with:
           name: StandUp-${{ matrix.name }}
