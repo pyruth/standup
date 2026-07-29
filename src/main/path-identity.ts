@@ -5,8 +5,14 @@ export function normalizeAppPath(
   appPath: string,
   platform: SupportedPlatform
 ): string {
-  const normalized = path.normalize(appPath.trim()).replace(/[\\/]+$/, '');
-  return platform === 'win32' ? normalized.toLocaleLowerCase('en-US') : normalized;
+  const platformPath = platform === 'win32' ? path.win32 : path.posix;
+  const normalized = platformPath
+    .normalize(appPath.trim())
+    .replace(/[\\/]+$/, '');
+
+  return platform === 'win32'
+    ? normalized.toLocaleLowerCase('en-US')
+    : normalized;
 }
 
 export function isBlacklistedPath(

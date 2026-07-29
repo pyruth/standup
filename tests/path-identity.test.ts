@@ -20,6 +20,15 @@ describe('application path identity', () => {
     ).toBe(true);
   });
 
+  it('uses Windows path rules independently of the test runner platform', () => {
+    expect(
+      normalizeAppPath(
+        'C:/Program Files/StandUp/../StandUp/StandUp.exe',
+        'win32'
+      )
+    ).toBe('c:\\program files\\standup\\standup.exe');
+  });
+
   it('preserves macOS path casing', () => {
     const saved = normalizeAppPath('/Applications/Focus.app', 'darwin');
 
