@@ -98,4 +98,14 @@ describe('Tauri v2 release packaging configuration', () => {
       )
     ).toBe(true);
   });
+
+  it('does not open a console window in Windows release builds', () => {
+    const rustEntryPoint = fs.readFileSync(
+      path.join(projectRoot, 'src-tauri', 'src', 'main.rs'),
+      'utf8'
+    );
+    expect(rustEntryPoint).toContain(
+      '#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]'
+    );
+  });
 });
