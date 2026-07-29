@@ -15,7 +15,10 @@ export const standUpApi = {
     invoke<void>('pause_timer', { minutes }),
   resumeTimer: () => invoke<void>('resume_timer'),
   previewReminder: () => invoke<void>('preview_reminder'),
+  previewSound: () => invoke<void>('preview_sound'),
   listMonitors: () => invoke<MonitorOption[]>('list_monitors'),
+  chooseCustomAnimation: () =>
+    invoke<StandUpSettings | null>('choose_custom_animation'),
   resetCustomAnimation: () =>
     invoke<StandUpSettings>('reset_custom_animation')
 } as const;

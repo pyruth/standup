@@ -1,5 +1,7 @@
+mod custom_animation;
 mod reminder;
 mod settings;
+mod sound;
 mod state;
 mod timer;
 mod tray;
@@ -100,22 +102,36 @@ fn preview_reminder(app: tauri::AppHandle) -> Result<(), String> {
 }
 
 #[tauri::command]
+fn preview_sound(app: tauri::AppHandle, state: State<'_, AppState>) -> Result<(), String> {
+    let configured_sound = state
+        .settings
+        .lock()
+        .map_err(|_| "settings state is unavailable".to_string())?
+        .get()
+        .reminder_sound;
+    sound::play(&app, configured_sound)
+}
+
+#[tauri::command]
 fn list_monitors(app: tauri::AppHandle) -> Result<Vec<MonitorOption>, String> {
     reminder::available_monitors(&app)
 }
 
 #[tauri::command]
-fn reset_custom_animation(state: State<'_, AppState>) -> Result<Settings, String> {
-    state
-        .settings
-        .lock()
-        .map_err(|_| "settings state is unavailable".to_string())?
-        .use_default_animation()
-        .map_err(|error| error.to_string())
+fn choose_custom_animation(app: tauri::AppHandle) -> Result<Option<Settings>, String> {
+    custom_animation::choose_and_import(&app)
+}
+
+#[tauri::command]
+fn reset_custom_animation(app: tauri::AppHandle) -> Result<Settings, String> {
+    custom_animation::reset(&app)
 }
 
 pub fn run() {
     tauri::Builder::default()
+        .register_uri_scheme_protocol("standup-animation", |context, request| {
+            custom_animation::protocol_response(context, request)
+        })
         .plugin(tauri_plugin_single_instance::init(|app, _, _| {
             if let Some(window) = app.get_webview_window("settings") {
                 let _ = window.show();
@@ -133,22 +149,25 @@ pub fn run() {
             pause_timer,
             resume_timer,
             preview_reminder,
+            preview_sound,
             list_monitors,
+            choose_custom_animation,
             reset_custom_animation
         ])
         .setup(|app| {
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
-            let settings_path = app.path().app_data_dir()?.join("settings.json");
+            let app_data_directory = app.path().app_data_dir()?;
+            let settings_path = app_data_directory.join("settings.json");
+            let custom_animation_path = app_data_directory.join("custom-animation.gif");
             let store = SettingsStore::load(settings_path);
             let launch_at_login = store.get().launch_at_login;
-            app.manage(AppState::new(store));
+            app.manage(AppState::new(store, custom_animation_path));
 
             reminder::create_popup(app.handle())?;
             tray::create(app)?;
-            apply_autostart(app.handle(), launch_at_login)
-                .map_err(std::io::Error::other)?;
+            apply_autostart(app.handle(), launch_at_login).map_err(std::io::Error::other)?;
             start_timer(app.handle().clone());
             Ok(())
         })

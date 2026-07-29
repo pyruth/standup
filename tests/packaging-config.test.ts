@@ -25,7 +25,13 @@ const tauriConfig = JSON.parse(
   bundle: {
     targets: string[];
     macOS: { minimumSystemVersion: string };
-    windows: { webviewInstallMode: { type: string } };
+    windows: {
+      nsis: {
+        installerIcon: string;
+        uninstallerIcon: string;
+      };
+      webviewInstallMode: { type: string };
+    };
   };
 };
 
@@ -77,5 +83,19 @@ describe('Tauri v2 release packaging configuration', () => {
     expect(tauriConfig.bundle.windows.webviewInstallMode.type).toBe(
       'downloadBootstrapper'
     );
+  });
+
+  it('brands the installer and uninstaller with the StandUp logo', () => {
+    expect(tauriConfig.bundle.windows.nsis.installerIcon).toBe(
+      'icons/icon.ico'
+    );
+    expect(tauriConfig.bundle.windows.nsis.uninstallerIcon).toBe(
+      'icons/icon.ico'
+    );
+    expect(
+      fs.existsSync(
+        path.join(projectRoot, 'src-tauri', 'icons', 'icon.ico')
+      )
+    ).toBe(true);
   });
 });

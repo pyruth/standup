@@ -28,6 +28,11 @@ const statusLabel = byId<HTMLElement>('status-label');
 const statusCard = document.querySelector<HTMLElement>('.status-card')!;
 const saveState = byId<HTMLElement>('save-state');
 const previewButton = byId<HTMLButtonElement>('preview-button');
+const soundPreviewButton =
+  byId<HTMLButtonElement>('sound-preview-button');
+const uploadAnimationButton = byId<HTMLButtonElement>(
+  'upload-animation-button'
+);
 const copyPromptButton = byId<HTMLButtonElement>('copy-prompt-button');
 const resetAnimationButton = byId<HTMLButtonElement>(
   'reset-animation-button'
@@ -76,6 +81,7 @@ function renderSettings(settings: StandUpSettings): void {
   idleSelect.value = String(settings.idleThresholdMinutes);
   loginToggle.checked = settings.launchAtLogin;
   soundSelect.value = settings.reminderSound;
+  soundPreviewButton.disabled = settings.reminderSound === 'off';
   monitorSelect.value = settings.selectedMonitor;
   const position = document.querySelector<HTMLInputElement>(
     `input[name="reminder-position"][value="${settings.reminderPosition}"]`
@@ -215,6 +221,13 @@ soundSelect.addEventListener('change', () => {
     reminderSound: soundSelect.value as StandUpSettings['reminderSound']
   });
 });
+soundPreviewButton.addEventListener('click', async () => {
+  try {
+    await standUpApi.previewSound();
+  } catch (error) {
+    setSaving(false, error instanceof Error ? error.message : String(error));
+  }
+});
 monitorSelect.addEventListener('change', () => {
   void updateSettings({ selectedMonitor: monitorSelect.value });
 });
@@ -235,8 +248,33 @@ previewButton.addEventListener('click', () => {
 copyPromptButton.addEventListener('click', () => {
   void copyPrompt();
 });
+uploadAnimationButton.addEventListener('click', async () => {
+  uploadAnimationButton.disabled = true;
+  uploadAnimationButton.textContent = 'Checking GIF…';
+  setSaving(true, 'Validating and sanitizing your GIF…');
+  try {
+    const settings = await standUpApi.chooseCustomAnimation();
+    if (settings) {
+      renderSettings(settings);
+      setSaving(false, 'Custom GIF imported securely');
+      await standUpApi.previewReminder();
+    } else {
+      setSaving(false);
+    }
+  } catch (error) {
+    setSaving(false, error instanceof Error ? error.message : String(error));
+  } finally {
+    uploadAnimationButton.disabled = false;
+    uploadAnimationButton.textContent = 'Choose custom GIF';
+  }
+});
 resetAnimationButton.addEventListener('click', async () => {
-  renderSettings(await standUpApi.resetCustomAnimation());
+  try {
+    renderSettings(await standUpApi.resetCustomAnimation());
+    setSaving(false, 'Restored the built-in StandUp animation');
+  } catch (error) {
+    setSaving(false, error instanceof Error ? error.message : String(error));
+  }
 });
 
 void standUpApi

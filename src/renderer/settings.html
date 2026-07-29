@@ -90,13 +90,22 @@
           </span>
           <select id="monitor-select" aria-label="Reminder monitor"></select>
         </label>
-        <label class="field">
+        <div class="field">
           <span>
             <strong>Sound</strong>
             <small>Silent by default; plays once with the reminder</small>
           </span>
-          <select id="sound-select" aria-label="Reminder sound"></select>
-        </label>
+          <div class="inline-control">
+            <select id="sound-select" aria-label="Reminder sound"></select>
+            <button
+              id="sound-preview-button"
+              class="secondary-button compact-button"
+              type="button"
+            >
+              Test
+            </button>
+          </div>
+        </div>
       </section>
 
       <section class="card">
@@ -118,6 +127,13 @@
           ></textarea>
         </label>
         <div class="prompt-actions">
+          <button
+            id="upload-animation-button"
+            class="primary-button"
+            type="button"
+          >
+            Choose custom GIF
+          </button>
           <button id="copy-prompt-button" class="primary-button" type="button">
             Copy AI prompt
           </button>

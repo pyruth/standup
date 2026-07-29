@@ -164,6 +164,14 @@ impl SettingsStore {
         Ok(next)
     }
 
+    pub fn use_custom_animation(&mut self) -> Result<Settings, SettingsError> {
+        let mut next = self.settings.clone();
+        next.use_custom_animation = true;
+        self.save(&next)?;
+        self.settings = next.clone();
+        Ok(next)
+    }
+
     fn save(&self, settings: &Settings) -> Result<(), SettingsError> {
         if let Some(parent) = self.path.parent() {
             fs::create_dir_all(parent)?;
@@ -190,16 +198,11 @@ impl Settings {
 }
 
 fn valid_monitor_id(value: &str) -> bool {
-    !value.is_empty()
-        && value.len() <= 512
-        && !value.chars().any(char::is_control)
+    !value.is_empty() && value.len() <= 512 && !value.chars().any(char::is_control)
 }
 
 fn temporary_path(path: &Path) -> PathBuf {
-    let mut name = path
-        .file_name()
-        .unwrap_or_default()
-        .to_os_string();
+    let mut name = path.file_name().unwrap_or_default().to_os_string();
     name.push(".tmp");
     path.with_file_name(name)
 }

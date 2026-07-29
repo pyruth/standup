@@ -101,9 +101,7 @@ impl TimerEngine {
     }
 
     pub fn status(&self, now_ms: u64, popup_visible: bool) -> TimerStatus {
-        let is_paused = self
-            .pause_until
-            .is_some_and(|deadline| now_ms < deadline);
+        let is_paused = self.pause_until.is_some_and(|deadline| now_ms < deadline);
         TimerStatus {
             remaining_milliseconds: self
                 .reminder_interval_ms

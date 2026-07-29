@@ -1,6 +1,6 @@
 [package]
 name = "standup"
-version = "2.0.0"
+version = "2.0.1"
 description = "A private, offline-first stand-up reminder."
 authors = ["ioiostudio"]
 license = "LicenseRef-Proprietary"
@@ -16,6 +16,8 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.6.3", features = [] }
 
 [dependencies]
+gif = "0.14.2"
+rfd = "0.17.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 system-idle-time = "1.0.4"

@@ -1,17 +1,17 @@
 use crate::{settings::SettingsStore, timer::TimerEngine};
-use std::sync::{
-    atomic::AtomicBool,
-    Mutex,
-};
+use std::path::PathBuf;
+use std::sync::{atomic::AtomicBool, Mutex};
 
 pub struct AppState {
     pub settings: Mutex<SettingsStore>,
     pub timer: Mutex<TimerEngine>,
     pub popup_visible: AtomicBool,
+    pub sound_playing: AtomicBool,
+    pub custom_animation_path: PathBuf,
 }
 
 impl AppState {
-    pub fn new(settings: SettingsStore) -> Self {
+    pub fn new(settings: SettingsStore, custom_animation_path: PathBuf) -> Self {
         let current = settings.get();
         Self {
             timer: Mutex::new(TimerEngine::new(
@@ -20,6 +20,8 @@ impl AppState {
             )),
             settings: Mutex::new(settings),
             popup_visible: AtomicBool::new(false),
+            sound_playing: AtomicBool::new(false),
+            custom_animation_path,
         }
     }
 }

@@ -1,5 +1,9 @@
 use crate::{reminder, state::AppState};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::{
+    sync::atomic::Ordering,
+    thread,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 use tauri::{
     menu::{MenuBuilder, MenuItem},
     tray::TrayIconBuilder,
@@ -10,7 +14,7 @@ pub fn create(app: &App) -> tauri::Result<()> {
     let status = MenuItem::with_id(
         app,
         "status",
-        "StandUp is active",
+        status_label(app.handle()),
         false,
         None::<&str>,
     )?;
@@ -22,29 +26,36 @@ pub fn create(app: &App) -> tauri::Result<()> {
         .text("resume", "Resume")
         .separator()
         .text("preview", "Preview Reminder")
-        .text("settings", "Settings…")
+        .text("settings", "Settings...")
         .separator()
         .text("quit", "Quit StandUp")
         .build()?;
 
+    let status_for_events = status.clone();
     let mut builder = TrayIconBuilder::with_id("standup-tray")
         .tooltip("StandUp")
         .menu(&menu)
         .show_menu_on_left_click(true)
-        .on_menu_event(|app, event| match event.id().as_ref() {
-            "pause-30" => pause(app, 30),
-            "pause-60" => pause(app, 60),
-            "resume" => {
-                if let Ok(mut timer) = app.state::<AppState>().timer.lock() {
-                    timer.resume(now_ms());
+        .on_menu_event(move |app, event| {
+            match event.id().as_ref() {
+                "pause-30" => pause(app, 30),
+                "pause-60" => pause(app, 60),
+                "resume" => {
+                    if let Ok(mut timer) = app.state::<AppState>().timer.lock() {
+                        timer.resume(now_ms());
+                    }
                 }
+                "preview" => {
+                    let _ = reminder::show(app, true);
+                }
+                "settings" => show_settings(app),
+                "quit" => {
+                    app.exit(0);
+                    return;
+                }
+                _ => {}
             }
-            "preview" => {
-                let _ = reminder::show(app, true);
-            }
-            "settings" => show_settings(app),
-            "quit" => app.exit(0),
-            _ => {}
+            let _ = status_for_events.set_text(status_label(app));
         });
 
     if let Some(icon) = app.default_window_icon() {
@@ -56,7 +67,67 @@ pub fn create(app: &App) -> tauri::Result<()> {
     }
 
     builder.build(app)?;
+    start_status_updates(app.handle().clone(), status);
     Ok(())
+}
+
+fn start_status_updates(app: tauri::AppHandle, status: MenuItem<tauri::Wry>) {
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_secs(5));
+        let _ = status.set_text(status_label(&app));
+    });
+}
+
+fn status_label(app: &tauri::AppHandle) -> String {
+    let state = app.state::<AppState>();
+    let popup_visible = state.popup_visible.load(Ordering::SeqCst);
+    let Ok(timer) = state.timer.lock() else {
+        return "StandUp timer unavailable".into();
+    };
+    let status = timer.status(now_ms(), popup_visible);
+
+    if status.popup_visible {
+        return "Reminder is showing".into();
+    }
+    if status.reminder_pending {
+        return "Reminder due - waiting for a suitable moment".into();
+    }
+    if status.is_paused {
+        let remaining = status
+            .pause_until
+            .unwrap_or_default()
+            .saturating_sub(now_ms());
+        return format!("Paused - {}", format_duration(remaining));
+    }
+    format!(
+        "Next reminder - {}",
+        format_duration(status.remaining_milliseconds)
+    )
+}
+
+fn format_duration(milliseconds: u64) -> String {
+    if milliseconds == 0 {
+        return "due now".into();
+    }
+    let total_minutes = milliseconds.div_ceil(60_000);
+    if total_minutes < 60 {
+        return format!(
+            "{} {}",
+            total_minutes,
+            if total_minutes == 1 {
+                "minute"
+            } else {
+                "minutes"
+            }
+        );
+    }
+    let hours = total_minutes / 60;
+    let minutes = total_minutes % 60;
+    if minutes == 0 {
+        format!("{} {}", hours, if hours == 1 { "hour" } else { "hours" })
+    } else {
+        format!("{hours}h {minutes}m")
+    }
 }
 
 fn pause(app: &tauri::AppHandle, minutes: u64) {
@@ -77,4 +148,17 @@ fn now_ms() -> u64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis() as u64
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn formats_tray_durations_for_minutes_and_hours() {
+        assert_eq!(format_duration(1), "1 minute");
+        assert_eq!(format_duration(45 * 60_000), "45 minutes");
+        assert_eq!(format_duration(60 * 60_000), "1 hour");
+        assert_eq!(format_duration(90 * 60_000), "1h 30m");
+    }
 }

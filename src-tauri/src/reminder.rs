@@ -1,13 +1,11 @@
 use crate::{
+    custom_animation,
     settings::{ReminderPosition, Settings},
+    sound,
     state::AppState,
 };
 use serde::Serialize;
-use std::{
-    sync::atomic::Ordering,
-    thread,
-    time::Duration,
-};
+use std::{sync::atomic::Ordering, thread, time::Duration};
 use tauri::{
     AppHandle, LogicalSize, Manager, Monitor, PhysicalPosition, Position, WebviewUrl,
     WebviewWindow, WebviewWindowBuilder,
@@ -33,27 +31,23 @@ pub fn create_popup(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         return Ok(window);
     }
 
-    let window = WebviewWindowBuilder::new(
-        app,
-        "reminder",
-        WebviewUrl::App("popup.html".into()),
-    )
-    .title("StandUp Reminder")
-    .inner_size(POPUP_WIDTH, POPUP_HEIGHT)
-    .resizable(false)
-    .maximizable(false)
-    .minimizable(false)
-    .closable(false)
-    .decorations(false)
-    .transparent(true)
-    .shadow(false)
-    .skip_taskbar(true)
-    .always_on_top(true)
-    .visible_on_all_workspaces(true)
-    .focusable(false)
-    .focused(false)
-    .visible(false)
-    .build()?;
+    let window = WebviewWindowBuilder::new(app, "reminder", WebviewUrl::App("popup.html".into()))
+        .title("StandUp Reminder")
+        .inner_size(POPUP_WIDTH, POPUP_HEIGHT)
+        .resizable(false)
+        .maximizable(false)
+        .minimizable(false)
+        .closable(false)
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .skip_taskbar(true)
+        .always_on_top(true)
+        .visible_on_all_workspaces(true)
+        .focusable(false)
+        .focused(false)
+        .visible(false)
+        .build()?;
 
     window.set_ignore_cursor_events(true)?;
     Ok(window)
@@ -77,14 +71,17 @@ pub fn show(app: &AppHandle, preview: bool) -> Result<(), String> {
     let window = create_popup(app).map_err(|error| error.to_string())?;
     place_popup(app, &window, &settings)?;
 
-    let position = serde_json::to_string(&settings.reminder_position)
+    let position =
+        serde_json::to_string(&settings.reminder_position).map_err(|error| error.to_string())?;
+    let animation_url = serde_json::to_string(custom_animation::active_url(app, &settings))
         .map_err(|error| error.to_string())?;
     window
         .eval(&format!(
-            "window.__standupRestartReminder?.({position});"
+            "window.__standupRestartReminder?.({position}, {animation_url});"
         ))
         .map_err(|error| error.to_string())?;
     window.show().map_err(|error| error.to_string())?;
+    let _ = sound::play(app, settings.reminder_sound);
 
     if !preview {
         let mut timer = state
@@ -139,11 +136,7 @@ pub fn available_monitors(app: &AppHandle) -> Result<Vec<MonitorOption>, String>
         .collect())
 }
 
-fn place_popup(
-    app: &AppHandle,
-    window: &WebviewWindow,
-    settings: &Settings,
-) -> Result<(), String> {
+fn place_popup(app: &AppHandle, window: &WebviewWindow, settings: &Settings) -> Result<(), String> {
     let reference_window = app
         .get_webview_window("settings")
         .ok_or_else(|| "settings window is unavailable".to_string())?;
@@ -188,23 +181,23 @@ fn place_popup(
     let bottom = top + f64::from(work_area.size.height);
 
     let x = match settings.reminder_position {
-        ReminderPosition::TopLeft
-        | ReminderPosition::MiddleLeft
-        | ReminderPosition::BottomLeft => left + margin,
-        ReminderPosition::TopCenter
-        | ReminderPosition::Center
-        | ReminderPosition::BottomCenter => left + (right - left - width) / 2.0,
+        ReminderPosition::TopLeft | ReminderPosition::MiddleLeft | ReminderPosition::BottomLeft => {
+            left + margin
+        }
+        ReminderPosition::TopCenter | ReminderPosition::Center | ReminderPosition::BottomCenter => {
+            left + (right - left - width) / 2.0
+        }
         ReminderPosition::TopRight
         | ReminderPosition::MiddleRight
         | ReminderPosition::BottomRight => right - width - margin,
     };
     let y = match settings.reminder_position {
-        ReminderPosition::TopLeft
-        | ReminderPosition::TopCenter
-        | ReminderPosition::TopRight => top + margin,
-        ReminderPosition::MiddleLeft
-        | ReminderPosition::Center
-        | ReminderPosition::MiddleRight => top + (bottom - top - height) / 2.0,
+        ReminderPosition::TopLeft | ReminderPosition::TopCenter | ReminderPosition::TopRight => {
+            top + margin
+        }
+        ReminderPosition::MiddleLeft | ReminderPosition::Center | ReminderPosition::MiddleRight => {
+            top + (bottom - top - height) / 2.0
+        }
         ReminderPosition::BottomLeft
         | ReminderPosition::BottomCenter
         | ReminderPosition::BottomRight => bottom - height - margin,

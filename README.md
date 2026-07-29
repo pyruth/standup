@@ -26,13 +26,15 @@ remote assets, HTTP client, localhost server, or runtime network calls.
 - Reused, always-on-top, non-focusable, click-through eight-second popup
 - Nine reminder positions and automatic/specific monitor selection
 - Local creative prompt builder for making a custom GIF with any AI provider
-- Silent-by-default sound preference model
+- Secure native custom-GIF picker with validation, sanitizing re-encode, private
+  storage, preview, and reset to the built-in animation
+- Silent-by-default system beep, one-second soft chime, and two-second gentle
+  chime with sound testing
 - Per-window Tauri capabilities and a strict local-only CSP
 - Single-instance behavior
 
 See [V2_MIGRATION.md](./V2_MIGRATION.md) for the remaining work before v2 is
-release-ready, including secure custom GIF import, sounds, foreground-app
-blacklisting, and platform smoke tests.
+release-ready, including foreground-app blacklisting and platform smoke tests.
 
 ## Development
 

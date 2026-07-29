@@ -29,14 +29,15 @@ build.
 - Strict local-only CSP and no updater/network dependencies.
 - Settings UI for timing, position, monitor, sound choice, local AI prompt
   construction, preview, and reset-to-default.
+- Native system beep and bundled original one- and two-second offline chimes.
+- Secure custom GIF picker with bounded reads, GIF signature and frame
+  validation, decode/re-encode sanitization, metadata stripping, atomic private
+  storage, preview, corruption fallback, and reset.
+- Live tray status showing remaining time, pause time, due state, or popup state.
 - Native Rust unit tests plus existing TypeScript tests.
 
 ## Remaining before v2 is release-ready
 
-- Secure custom GIF picker, bounded decode, complete frame validation,
-  sanitizing re-encode, and atomic private storage.
-- Built-in system beep plus original one- and two-second WAV assets and sound
-  preview.
 - Foreground application picker/detection and deferred blacklist reminders.
 - Explicit lock/suspend event handling on both platforms.
 - Display hot-plug handling while the popup is already visible.
