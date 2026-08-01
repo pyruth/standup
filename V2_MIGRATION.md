@@ -23,7 +23,8 @@ build.
 - Active/idle accumulation through the platform idle-time API.
 - Pause/resume commands, single-instance behavior, launch at login, and tray
   controls.
-- Reused click-through reminder window with an eight-second lifecycle.
+- Fresh click-through window for every reminder with a renderer-ready
+  checkpoint, custom-GIF fallback, and guarded eight-second lifecycle.
 - Work-area-aware nine-position placement and monitor selection with primary
   monitor fallback.
 - Strict local-only CSP and no updater/network dependencies.

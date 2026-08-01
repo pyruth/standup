@@ -5,15 +5,102 @@ use crate::{
     state::AppState,
 };
 use serde::Serialize;
-use std::{sync::atomic::Ordering, thread, time::Duration};
+use std::{thread, time::Duration};
 use tauri::{
     AppHandle, LogicalSize, Manager, Monitor, PhysicalPosition, Position, WebviewUrl,
     WebviewWindow, WebviewWindowBuilder,
 };
+use uuid::Uuid;
 
 const POPUP_WIDTH: f64 = 272.0;
 const POPUP_HEIGHT: f64 = 384.0;
 const EDGE_MARGIN: f64 = 24.0;
+const PREPARING_TIMEOUT: Duration = Duration::from_secs(8);
+const VISIBLE_TIMEOUT: Duration = Duration::from_secs(9);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PopupPhase {
+    Preparing,
+    Visible,
+}
+
+#[derive(Debug, Clone)]
+struct PopupSession {
+    id: String,
+    label: String,
+    phase: PopupPhase,
+    preview: bool,
+    position: ReminderPosition,
+    animation_url: String,
+}
+
+#[derive(Debug, Default)]
+pub struct PopupLifecycle {
+    current: Option<PopupSession>,
+}
+
+impl PopupLifecycle {
+    pub fn is_busy(&self) -> bool {
+        self.current.is_some()
+    }
+
+    pub fn is_visible(&self) -> bool {
+        self.current
+            .as_ref()
+            .is_some_and(|session| session.phase == PopupPhase::Visible)
+    }
+
+    fn configuration(&self, label: &str) -> Option<PopupConfiguration> {
+        let session = self.current.as_ref()?;
+        if session.label != label || session.phase != PopupPhase::Preparing {
+            return None;
+        }
+        Some(PopupConfiguration {
+            position: session.position,
+            animation_url: session.animation_url.clone(),
+        })
+    }
+
+    fn mark_visible(&mut self, label: &str) -> Option<PopupSession> {
+        let session = self.current.as_mut()?;
+        if session.label != label || session.phase != PopupPhase::Preparing {
+            return None;
+        }
+        session.phase = PopupPhase::Visible;
+        Some(session.clone())
+    }
+
+    fn finish_label(&mut self, label: &str) -> Option<PopupSession> {
+        if self
+            .current
+            .as_ref()
+            .is_some_and(|session| session.label == label)
+        {
+            self.current.take()
+        } else {
+            None
+        }
+    }
+
+    fn finish_id_in_phase(&mut self, id: &str, phase: PopupPhase) -> Option<PopupSession> {
+        if self
+            .current
+            .as_ref()
+            .is_some_and(|session| session.id == id && session.phase == phase)
+        {
+            self.current.take()
+        } else {
+            None
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PopupConfiguration {
+    position: ReminderPosition,
+    animation_url: String,
+}
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,12 +113,8 @@ pub struct MonitorOption {
     pub primary: bool,
 }
 
-pub fn create_popup(app: &AppHandle) -> tauri::Result<WebviewWindow> {
-    if let Some(window) = app.get_webview_window("reminder") {
-        return Ok(window);
-    }
-
-    let window = WebviewWindowBuilder::new(app, "reminder", WebviewUrl::App("popup.html".into()))
+fn create_popup(app: &AppHandle, label: &str) -> tauri::Result<WebviewWindow> {
+    let window = WebviewWindowBuilder::new(app, label, WebviewUrl::App("popup.html".into()))
         .title("StandUp Reminder")
         .inner_size(POPUP_WIDTH, POPUP_HEIGHT)
         .resizable(false)
@@ -55,55 +138,161 @@ pub fn create_popup(app: &AppHandle) -> tauri::Result<WebviewWindow> {
 
 pub fn show(app: &AppHandle, preview: bool) -> Result<(), String> {
     let state = app.state::<AppState>();
-    if state
-        .popup_visible
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        return Ok(());
-    }
-
     let settings = state
         .settings
         .lock()
         .map_err(|_| "settings state is unavailable".to_string())?
         .get();
-    let window = create_popup(app).map_err(|error| error.to_string())?;
-    place_popup(app, &window, &settings)?;
+    let id = Uuid::new_v4().simple().to_string();
+    let label = format!("reminder-{id}");
+    let session = PopupSession {
+        id: id.clone(),
+        label: label.clone(),
+        phase: PopupPhase::Preparing,
+        preview,
+        position: settings.reminder_position,
+        animation_url: custom_animation::active_url(app, &settings).to_string(),
+    };
 
-    let position =
-        serde_json::to_string(&settings.reminder_position).map_err(|error| error.to_string())?;
-    let animation_url = serde_json::to_string(custom_animation::active_url(app, &settings))
-        .map_err(|error| error.to_string())?;
-    window
-        .eval(&format!(
-            "window.__standupRestartReminder?.({position}, {animation_url});"
-        ))
-        .map_err(|error| error.to_string())?;
-    window.show().map_err(|error| error.to_string())?;
-    let _ = sound::play(app, settings.reminder_sound);
-
-    if !preview {
-        let mut timer = state
-            .timer
+    let replaced = {
+        let mut lifecycle = state
+            .popup
             .lock()
-            .map_err(|_| "timer state is unavailable".to_string())?;
-        timer.mark_reminder_shown(now_ms());
+            .map_err(|_| "popup state is unavailable".to_string())?;
+        if lifecycle.is_busy() && !preview {
+            return Ok(());
+        }
+        lifecycle.current.replace(session)
+    };
+    if let Some(previous) = replaced {
+        destroy_window(app, &previous.label);
     }
 
-    let handle = app.clone();
-    thread::spawn(move || {
-        thread::sleep(Duration::from_secs(8));
-        if let Some(window) = handle.get_webview_window("reminder") {
-            let _ = window.hide();
+    let prepare_result = create_popup(app, &label)
+        .map_err(|error| error.to_string())
+        .and_then(|window| {
+            if let Err(error) = place_popup(app, &window, &settings) {
+                let _ = window.destroy();
+                return Err(error);
+            }
+            Ok(())
+        });
+    if let Err(error) = prepare_result {
+        clear_session_by_label(app, &label);
+        return Err(error);
+    }
+
+    start_preparing_watchdog(app.clone(), id);
+    Ok(())
+}
+
+pub fn configuration(
+    window: &WebviewWindow,
+    state: &AppState,
+) -> Result<PopupConfiguration, String> {
+    state
+        .popup
+        .lock()
+        .map_err(|_| "popup state is unavailable".to_string())?
+        .configuration(window.label())
+        .ok_or_else(|| "this popup session is no longer active".to_string())
+}
+
+pub fn ready(app: &AppHandle, window: &WebviewWindow) -> Result<(), String> {
+    let state = app.state::<AppState>();
+    {
+        let lifecycle = state
+            .popup
+            .lock()
+            .map_err(|_| "popup state is unavailable".to_string())?;
+        if lifecycle.configuration(window.label()).is_none() {
+            return Err("this popup session is no longer preparing".into());
         }
-        handle
-            .state::<AppState>()
-            .popup_visible
-            .store(false, Ordering::SeqCst);
-    });
+    }
+
+    let reminder_sound = state
+        .settings
+        .lock()
+        .map_err(|_| "settings state is unavailable".to_string())?
+        .get()
+        .reminder_sound;
+
+    if let Err(error) = window.show() {
+        clear_session_by_label(app, window.label());
+        return Err(error.to_string());
+    }
+
+    let session = state
+        .popup
+        .lock()
+        .map_err(|_| "popup state is unavailable".to_string())?
+        .mark_visible(window.label())
+        .ok_or_else(|| {
+            let _ = window.destroy();
+            "this popup session expired before it could become visible".to_string()
+        })?;
+
+    start_visible_watchdog(app.clone(), session.id.clone());
+    let _ = sound::play(app, reminder_sound);
+
+    if !session.preview {
+        if let Ok(mut timer) = state.timer.lock() {
+            timer.mark_reminder_shown(now_ms());
+        } else {
+            clear_session_by_label(app, window.label());
+            return Err("timer state is unavailable".into());
+        }
+    }
 
     Ok(())
+}
+
+pub fn finished(app: &AppHandle, window: &WebviewWindow) {
+    clear_session_by_label(app, window.label());
+}
+
+fn start_preparing_watchdog(app: AppHandle, id: String) {
+    thread::spawn(move || {
+        thread::sleep(PREPARING_TIMEOUT);
+        clear_session_by_id_and_phase(&app, &id, PopupPhase::Preparing);
+    });
+}
+
+fn start_visible_watchdog(app: AppHandle, id: String) {
+    thread::spawn(move || {
+        thread::sleep(VISIBLE_TIMEOUT);
+        clear_session_by_id_and_phase(&app, &id, PopupPhase::Visible);
+    });
+}
+
+fn clear_session_by_label(app: &AppHandle, label: &str) {
+    let session = app
+        .state::<AppState>()
+        .popup
+        .lock()
+        .ok()
+        .and_then(|mut lifecycle| lifecycle.finish_label(label));
+    if let Some(session) = session {
+        destroy_window(app, &session.label);
+    }
+}
+
+fn clear_session_by_id_and_phase(app: &AppHandle, id: &str, phase: PopupPhase) {
+    let session = app
+        .state::<AppState>()
+        .popup
+        .lock()
+        .ok()
+        .and_then(|mut lifecycle| lifecycle.finish_id_in_phase(id, phase));
+    if let Some(session) = session {
+        destroy_window(app, &session.label);
+    }
+}
+
+fn destroy_window(app: &AppHandle, label: &str) {
+    if let Some(window) = app.get_webview_window(label) {
+        let _ = window.destroy();
+    }
 }
 
 pub fn available_monitors(app: &AppHandle) -> Result<Vec<MonitorOption>, String> {
@@ -164,8 +353,7 @@ fn place_popup(app: &AppHandle, window: &WebviewWindow, settings: &Settings) -> 
     let available_height = f64::from(work_area.size.height) / scale - EDGE_MARGIN * 2.0;
     let fit_scale = (available_width / POPUP_WIDTH)
         .min(available_height / POPUP_HEIGHT)
-        .min(1.0)
-        .max(0.25);
+        .clamp(0.25, 1.0);
     let logical_width = POPUP_WIDTH * fit_scale;
     let logical_height = POPUP_HEIGHT * fit_scale;
     window
@@ -240,6 +428,17 @@ fn now_ms() -> u64 {
 mod tests {
     use super::*;
 
+    fn popup_session(id: &str, phase: PopupPhase) -> PopupSession {
+        PopupSession {
+            id: id.into(),
+            label: format!("reminder-{id}"),
+            phase,
+            preview: true,
+            position: ReminderPosition::BottomRight,
+            animation_url: "default".into(),
+        }
+    }
+
     #[test]
     fn all_positions_are_stable_serialized_values() {
         assert_eq!(
@@ -250,5 +449,40 @@ mod tests {
             serde_json::to_string(&ReminderPosition::Center).unwrap(),
             "\"center\""
         );
+    }
+
+    #[test]
+    fn popup_only_becomes_visible_after_the_ready_checkpoint() {
+        let mut lifecycle = PopupLifecycle {
+            current: Some(popup_session("current", PopupPhase::Preparing)),
+        };
+
+        assert!(lifecycle.is_busy());
+        assert!(!lifecycle.is_visible());
+        assert!(lifecycle.configuration("reminder-current").is_some());
+
+        lifecycle.mark_visible("reminder-current").unwrap();
+        assert!(lifecycle.is_visible());
+        assert!(lifecycle.configuration("reminder-current").is_none());
+    }
+
+    #[test]
+    fn stale_watchdogs_cannot_finish_a_newer_popup() {
+        let mut lifecycle = PopupLifecycle {
+            current: Some(popup_session("new", PopupPhase::Visible)),
+        };
+
+        assert!(lifecycle
+            .finish_id_in_phase("old", PopupPhase::Visible)
+            .is_none());
+        assert!(lifecycle.is_visible());
+        assert!(lifecycle
+            .finish_id_in_phase("new", PopupPhase::Preparing)
+            .is_none());
+        assert!(lifecycle.is_visible());
+        assert!(lifecycle
+            .finish_id_in_phase("new", PopupPhase::Visible)
+            .is_some());
+        assert!(!lifecycle.is_busy());
     }
 }

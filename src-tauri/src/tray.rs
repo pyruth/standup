@@ -1,6 +1,5 @@
 use crate::{reminder, state::AppState};
 use std::{
-    sync::atomic::Ordering,
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -85,15 +84,22 @@ fn start_status_updates(app: tauri::AppHandle, status: MenuItem<tauri::Wry>) {
 
 fn status_label(app: &tauri::AppHandle) -> String {
     let state = app.state::<AppState>();
-    let popup_visible = state.popup_visible.load(Ordering::SeqCst);
+    let (popup_busy, popup_visible) = state
+        .popup
+        .lock()
+        .map(|lifecycle| (lifecycle.is_busy(), lifecycle.is_visible()))
+        .unwrap_or((true, false));
+    if popup_busy {
+        return if popup_visible {
+            "Reminder is showing".into()
+        } else {
+            "Reminder is preparing".into()
+        };
+    }
     let Ok(timer) = state.timer.lock() else {
         return "StandUp timer unavailable".into();
     };
-    let status = timer.status(now_ms(), popup_visible);
-
-    if status.popup_visible {
-        return "Reminder is showing".into();
-    }
+    let status = timer.status(now_ms(), false);
     if status.reminder_pending {
         return "Reminder due - waiting for a suitable moment".into();
     }

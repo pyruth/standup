@@ -94,7 +94,7 @@ pub fn protocol_response(
     context: UriSchemeContext<'_, tauri::Wry>,
     request: http::Request<Vec<u8>>,
 ) -> http::Response<Vec<u8>> {
-    if context.webview_label() != "reminder" || request.uri().path() != "/current.gif" {
+    if !context.webview_label().starts_with("reminder-") || request.uri().path() != "/current.gif" {
         return response(
             http::StatusCode::NOT_FOUND,
             b"not found".to_vec(),
@@ -351,9 +351,7 @@ mod tests {
 
     #[test]
     fn accepts_the_bundled_standup_animation_under_custom_limits() {
-        let bundled = include_bytes!(
-            "../../src/renderer/assets/standup-reminder.gif"
-        );
+        let bundled = include_bytes!("../../src/renderer/assets/standup-reminder.gif");
         let sanitized = sanitize_gif(bundled).unwrap();
         assert!(has_gif_signature(&sanitized));
     }

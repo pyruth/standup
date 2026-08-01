@@ -77,6 +77,14 @@ describe('Tauri v2 release packaging configuration', () => {
     expect(capabilityText).not.toContain('fs:');
     expect(capabilityText).not.toContain('http:');
     expect(capabilityText).not.toContain('updater:');
+
+    const popupCapability = JSON.parse(
+      fs.readFileSync(
+        path.join(projectRoot, 'src-tauri', 'capabilities', 'popup.json'),
+        'utf8'
+      )
+    ) as { windows: string[] };
+    expect(popupCapability.windows).toEqual(['reminder-*']);
   });
 
   it('keeps the normal installer small by bootstrapping WebView2', () => {

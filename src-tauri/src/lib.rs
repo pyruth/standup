@@ -13,11 +13,10 @@ use crate::{
     timer::{TickInput, TimerStatus},
 };
 use std::{
-    sync::atomic::Ordering,
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tauri::{Manager, State, WindowEvent};
+use tauri::{Manager, State, WebviewWindow, WindowEvent};
 use tauri_plugin_autostart::{MacosLauncher, ManagerExt};
 
 #[tauri::command]
@@ -65,11 +64,15 @@ fn update_settings(
 
 #[tauri::command]
 fn get_timer_status(state: State<'_, AppState>) -> Result<TimerStatus, String> {
-    let visible = state.popup_visible.load(Ordering::SeqCst);
+    let busy = state
+        .popup
+        .lock()
+        .map_err(|_| "popup state is unavailable".to_string())?
+        .is_busy();
     state
         .timer
         .lock()
-        .map(|timer| timer.status(now_ms(), visible))
+        .map(|timer| timer.status(now_ms(), busy))
         .map_err(|_| "timer state is unavailable".to_string())
 }
 
@@ -99,6 +102,30 @@ fn resume_timer(state: State<'_, AppState>) -> Result<(), String> {
 #[tauri::command]
 fn preview_reminder(app: tauri::AppHandle) -> Result<(), String> {
     reminder::show(&app, true)
+}
+
+#[tauri::command]
+fn popup_configuration(
+    window: WebviewWindow,
+    state: State<'_, AppState>,
+) -> Result<reminder::PopupConfiguration, String> {
+    reminder::configuration(&window, &state)
+}
+
+#[tauri::command]
+fn popup_ready(app: tauri::AppHandle, window: WebviewWindow) -> Result<(), String> {
+    reminder::ready(&app, &window)
+}
+
+#[tauri::command]
+fn popup_finished(app: tauri::AppHandle, window: WebviewWindow) {
+    reminder::finished(&app, &window);
+}
+
+#[tauri::command]
+fn popup_failed(app: tauri::AppHandle, window: WebviewWindow, message: String) {
+    eprintln!("StandUp reminder failed before display: {message}");
+    reminder::finished(&app, &window);
 }
 
 #[tauri::command]
@@ -149,6 +176,10 @@ pub fn run() {
             pause_timer,
             resume_timer,
             preview_reminder,
+            popup_configuration,
+            popup_ready,
+            popup_finished,
+            popup_failed,
             preview_sound,
             list_monitors,
             choose_custom_animation,
@@ -165,7 +196,6 @@ pub fn run() {
             let launch_at_login = store.get().launch_at_login;
             app.manage(AppState::new(store, custom_animation_path));
 
-            reminder::create_popup(app.handle())?;
             tray::create(app)?;
             apply_autostart(app.handle(), launch_at_login).map_err(std::io::Error::other)?;
             start_timer(app.handle().clone());
@@ -190,7 +220,11 @@ fn start_timer(app: tauri::AppHandle) {
             .map(|duration| duration.as_secs())
             .unwrap_or(0);
         let state = app.state::<AppState>();
-        let popup_visible = state.popup_visible.load(Ordering::SeqCst);
+        let popup_busy = state
+            .popup
+            .lock()
+            .map(|lifecycle| lifecycle.is_busy())
+            .unwrap_or(true);
         let should_show = state
             .timer
             .lock()
@@ -199,7 +233,7 @@ fn start_timer(app: tauri::AppHandle) {
                     now_ms: now_ms(),
                     idle_seconds,
                     blacklisted: false,
-                    popup_visible,
+                    popup_visible: popup_busy,
                     system_blocked: false,
                 })
             })

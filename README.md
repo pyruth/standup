@@ -23,7 +23,8 @@ remote assets, HTTP client, localhost server, or runtime network calls.
 - Rust-owned in-memory timer and local settings
 - Launch at login enabled by default
 - Tray/menu-bar controls for pause, resume, preview, settings, and quit
-- Reused, always-on-top, non-focusable, click-through eight-second popup
+- Fresh, always-on-top, non-focusable, click-through popup for every reminder,
+  shown only after the GIF has loaded and decoded
 - Nine reminder positions and automatic/specific monitor selection
 - Local creative prompt builder for making a custom GIF with any AI provider
 - Secure native custom-GIF picker with validation, sanitizing re-encode, private

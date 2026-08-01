@@ -1,11 +1,11 @@
-use crate::{settings::SettingsStore, timer::TimerEngine};
+use crate::{reminder::PopupLifecycle, settings::SettingsStore, timer::TimerEngine};
 use std::path::PathBuf;
 use std::sync::{atomic::AtomicBool, Mutex};
 
 pub struct AppState {
     pub settings: Mutex<SettingsStore>,
     pub timer: Mutex<TimerEngine>,
-    pub popup_visible: AtomicBool,
+    pub popup: Mutex<PopupLifecycle>,
     pub sound_playing: AtomicBool,
     pub custom_animation_path: PathBuf,
 }
@@ -19,7 +19,7 @@ impl AppState {
                 current.idle_threshold_minutes,
             )),
             settings: Mutex::new(settings),
-            popup_visible: AtomicBool::new(false),
+            popup: Mutex::new(PopupLifecycle::default()),
             sound_playing: AtomicBool::new(false),
             custom_animation_path,
         }
