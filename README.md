@@ -29,8 +29,9 @@ remote assets, HTTP client, localhost server, or runtime network calls.
 - Local creative prompt builder for making a custom GIF or vector Lottie JSON
   with any AI provider
 - Secure native animation picker with GIF sanitizing or strict vector-only
-  Lottie validation, private storage, selected-animation preview, and reset to
-  the built-in animation
+  Lottie validation, strict popup-sized complexity limits, background import,
+  private storage, selected-animation preview, and reset to the built-in
+  animation
 - Silent-by-default system beep, one-second soft chime, and two-second gentle
   chime with sound testing
 - Per-window Tauri capabilities and a strict local-only CSP

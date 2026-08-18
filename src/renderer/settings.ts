@@ -43,6 +43,7 @@ const resetAnimationButton = byId<HTMLButtonElement>(
 const promptPreview = byId<HTMLTextAreaElement>('prompt-preview');
 const animationStatus = byId<HTMLElement>('animation-status');
 const positionGrid = byId<HTMLElement>('position-grid');
+const PREVIEW_TIMEOUT_MILLISECONDS = 5_000;
 
 let currentSettings: StandUpSettings | undefined;
 
@@ -144,6 +145,25 @@ async function updateSettings(patch: SettingsPatch): Promise<void> {
   }
 }
 
+async function previewWithTimeout(): Promise<void> {
+  let timeout: number | undefined;
+  try {
+    await Promise.race([
+      standUpApi.previewReminder(),
+      new Promise<never>((_, reject) => {
+        timeout = window.setTimeout(
+          () => reject(new Error('Preview took too long to start')),
+          PREVIEW_TIMEOUT_MILLISECONDS
+        );
+      })
+    ]);
+  } finally {
+    if (timeout !== undefined) {
+      window.clearTimeout(timeout);
+    }
+  }
+}
+
 async function refreshMonitors(selectedMonitor = 'primary'): Promise<void> {
   const monitors = await standUpApi.listMonitors();
   monitorSelect.replaceChildren(
@@ -177,7 +197,7 @@ Technical delivery requirements:
 - Maximum dimensions: 1024 × 1024 pixels
 - Total duration: 0.5 to 8 seconds
 - GIF: maximum 15 MB and 120 frames; recommended 4 to 12 FPS
-- Lottie JSON: maximum 2 MB, 60 FPS, and 200 layers
+- Lottie JSON: maximum 2 MB, 60 FPS, 80 layers, and low visual complexity
 - Lottie must use vector shapes only: no images, text, fonts, audio, external assets, embedded data, or expressions
 - Seamless infinite loop preferred
 - Transparency is optional
@@ -247,8 +267,15 @@ positionGrid.addEventListener('change', (event) => {
 creativityInput.addEventListener('input', () => {
   promptPreview.value = technicalPrompt();
 });
-previewButton.addEventListener('click', () => {
-  void standUpApi.previewReminder();
+previewButton.addEventListener('click', async () => {
+  previewButton.disabled = true;
+  try {
+    await previewWithTimeout();
+  } catch (error) {
+    setSaving(false, error instanceof Error ? error.message : String(error));
+  } finally {
+    previewButton.disabled = false;
+  }
 });
 copyPromptButton.addEventListener('click', () => {
   void copyPrompt();
@@ -267,7 +294,6 @@ uploadAnimationButton.addEventListener('click', async () => {
           ? 'Lottie animation imported securely'
           : 'Custom GIF imported securely'
       );
-      await standUpApi.previewReminder();
     } else {
       setSaving(false);
     }
@@ -281,7 +307,7 @@ uploadAnimationButton.addEventListener('click', async () => {
 previewAnimationButton.addEventListener('click', async () => {
   previewAnimationButton.disabled = true;
   try {
-    await standUpApi.previewReminder();
+    await previewWithTimeout();
   } catch (error) {
     setSaving(false, error instanceof Error ? error.message : String(error));
   } finally {
@@ -292,7 +318,6 @@ resetAnimationButton.addEventListener('click', async () => {
   try {
     renderSettings(await standUpApi.resetCustomAnimation());
     setSaving(false, 'Restored the built-in StandUp animation');
-    await standUpApi.previewReminder();
   } catch (error) {
     setSaving(false, error instanceof Error ? error.message : String(error));
   }

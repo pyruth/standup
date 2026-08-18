@@ -1,6 +1,6 @@
 {
   "name": "standup",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "description": "A private, offline-first stand-up reminder for Windows and Apple Silicon macOS.",
   "private": true,
   "type": "module",

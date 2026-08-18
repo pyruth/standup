@@ -34,8 +34,9 @@ build.
 - Secure custom animation picker with bounded reads, GIF decode/re-encode
   sanitization, and vector-only Lottie JSON validation. Lottie imports reject
   expressions, external or embedded assets, images, text, fonts, audio, and
-  excessive complexity. Both formats use atomic private storage, an explicit
-  selected-animation preview, corruption fallback, and reset.
+  excessive complexity or recursive precompositions. Import validation runs
+  away from the settings UI. Both formats use atomic private storage, an
+  explicit selected-animation preview, corruption fallback, and reset.
 - Live tray status showing remaining time, pause time, due state, or popup state.
 - Native Rust unit tests plus existing TypeScript tests.
 

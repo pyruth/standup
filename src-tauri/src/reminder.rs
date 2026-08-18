@@ -159,7 +159,7 @@ pub fn show(app: &AppHandle, preview: bool) -> Result<(), String> {
             .popup
             .lock()
             .map_err(|_| "popup state is unavailable".to_string())?;
-        if lifecycle.is_busy() && !preview {
+        if lifecycle.is_busy() {
             return Ok(());
         }
         lifecycle.current.replace(session)

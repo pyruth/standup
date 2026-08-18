@@ -101,7 +101,12 @@ fn resume_timer(state: State<'_, AppState>) -> Result<(), String> {
 
 #[tauri::command]
 fn preview_reminder(app: tauri::AppHandle) -> Result<(), String> {
-    reminder::show(&app, true)
+    std::thread::spawn(move || {
+        if let Err(error) = reminder::show(&app, true) {
+            eprintln!("StandUp could not start the reminder preview: {error}");
+        }
+    });
+    Ok(())
 }
 
 #[tauri::command]
@@ -145,8 +150,8 @@ fn list_monitors(app: tauri::AppHandle) -> Result<Vec<MonitorOption>, String> {
 }
 
 #[tauri::command]
-fn choose_custom_animation(app: tauri::AppHandle) -> Result<Option<Settings>, String> {
-    custom_animation::choose_and_import(&app)
+async fn choose_custom_animation(app: tauri::AppHandle) -> Result<Option<Settings>, String> {
+    custom_animation::choose_and_import(app).await
 }
 
 #[tauri::command]
@@ -193,7 +198,17 @@ pub fn run() {
             let settings_path = app_data_directory.join("settings.json");
             let custom_gif_path = app_data_directory.join("custom-animation.gif");
             let custom_lottie_path = app_data_directory.join("custom-animation.json");
-            let store = SettingsStore::load(settings_path);
+            let mut store = SettingsStore::load(settings_path);
+            let loaded_settings = store.get();
+            if !custom_animation::stored_file_is_valid(
+                &loaded_settings,
+                &custom_gif_path,
+                &custom_lottie_path,
+            ) {
+                store
+                    .use_default_animation()
+                    .map_err(|error| std::io::Error::other(error.to_string()))?;
+            }
             let launch_at_login = store.get().launch_at_login;
             app.manage(AppState::new(store, custom_gif_path, custom_lottie_path));
 

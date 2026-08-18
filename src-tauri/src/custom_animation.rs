@@ -6,6 +6,7 @@ use gif::{ColorOutput, DecodeOptions, DisposalMethod, Encoder, Frame, Repeat};
 use serde::Serialize;
 use serde_json::Value;
 use std::{
+    collections::{HashMap, HashSet},
     fs::{self, OpenOptions},
     io::{Cursor, Write},
     path::{Path, PathBuf},
@@ -21,10 +22,11 @@ const MIN_DURATION_CENTISECONDS: u64 = 50;
 const MAX_DURATION_CENTISECONDS: u64 = 800;
 const MAX_DECODED_PIXELS: u64 = 32_000_000;
 const MAX_LOTTIE_DEPTH: usize = 64;
-const MAX_LOTTIE_NODES: usize = 100_000;
-const MAX_LOTTIE_LAYERS: usize = 200;
+const MAX_LOTTIE_NODES: usize = 20_000;
+const MAX_LOTTIE_LAYERS: usize = 80;
 const MAX_LOTTIE_COLLECTION: usize = 5_000;
 const MAX_LOTTIE_STRING: usize = 4_096;
+const MAX_LOTTIE_PRECOMP_DEPTH: usize = 8;
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(tag = "kind", rename_all = "kebab-case")]
@@ -64,6 +66,8 @@ enum ImportError {
     InvalidLottieDuration,
     #[error("The Lottie file is too complex to import safely")]
     LottieComplexityExceeded,
+    #[error("The Lottie file contains an invalid or recursive precomposition")]
+    InvalidLottiePrecomposition,
     #[error("Only vector Lottie animations are supported; images, text, fonts, and audio are not allowed")]
     UnsupportedLottieAsset,
     #[error("Lottie expressions are not allowed")]
@@ -74,15 +78,24 @@ enum ImportError {
     Storage(#[from] std::io::Error),
 }
 
-pub fn choose_and_import(app: &AppHandle) -> Result<Option<Settings>, String> {
-    let selected = rfd::FileDialog::new()
+pub async fn choose_and_import(app: AppHandle) -> Result<Option<Settings>, String> {
+    let selected = rfd::AsyncFileDialog::new()
         .set_title("Choose a custom StandUp animation")
         .add_filter("StandUp animation", &["gif", "json"])
-        .pick_file();
+        .pick_file()
+        .await;
     let Some(path) = selected else {
         return Ok(None);
     };
+    let path = path.path().to_path_buf();
 
+    tauri::async_runtime::spawn_blocking(move || import_selected(&app, &path))
+        .await
+        .map_err(|error| format!("animation import task failed: {error}"))?
+        .map(Some)
+}
+
+fn import_selected(app: &AppHandle, path: &Path) -> Result<Settings, String> {
     let state = app.state::<AppState>();
     let extension = path
         .extension()
@@ -94,13 +107,13 @@ pub fn choose_and_import(app: &AppHandle) -> Result<Option<Settings>, String> {
             CustomAnimationFormat::Gif,
             &state.custom_gif_path,
             &state.custom_lottie_path,
-            import_gif_from_path(&path).map_err(|error| error.to_string())?,
+            import_gif_from_path(path).map_err(|error| error.to_string())?,
         ),
         "json" => (
             CustomAnimationFormat::Lottie,
             &state.custom_lottie_path,
             &state.custom_gif_path,
-            import_lottie_from_path(&path).map_err(|error| error.to_string())?,
+            import_lottie_from_path(path).map_err(|error| error.to_string())?,
         ),
         _ => return Err(ImportError::InvalidExtension.to_string()),
     };
@@ -113,7 +126,7 @@ pub fn choose_and_import(app: &AppHandle) -> Result<Option<Settings>, String> {
         .map_err(|_| "settings state is unavailable".to_string())?
         .use_custom_animation(format)
         .map_err(|error| error.to_string())?;
-    Ok(Some(settings))
+    Ok(settings)
 }
 
 pub fn reset(app: &AppHandle) -> Result<Settings, String> {
@@ -138,7 +151,7 @@ pub fn active(app: &AppHandle, settings: &Settings) -> ActiveAnimation {
     }
     let state = app.state::<AppState>();
     match settings.custom_animation_format {
-        CustomAnimationFormat::Gif if stored_gif_is_valid(app) => {
+        CustomAnimationFormat::Gif if stored_gif_is_valid(&state.custom_gif_path) => {
             #[cfg(target_os = "windows")]
             let url = "http://standup-animation.localhost/current.gif";
 
@@ -153,6 +166,22 @@ pub fn active(app: &AppHandle, settings: &Settings) -> ActiveAnimation {
             .map(|data| ActiveAnimation::Lottie { data })
             .unwrap_or(ActiveAnimation::Default),
         _ => ActiveAnimation::Default,
+    }
+}
+
+pub fn stored_file_is_valid(
+    settings: &Settings,
+    custom_gif_path: &Path,
+    custom_lottie_path: &Path,
+) -> bool {
+    if !settings.use_custom_animation {
+        return true;
+    }
+    match settings.custom_animation_format {
+        CustomAnimationFormat::Gif => stored_gif_is_valid(custom_gif_path),
+        CustomAnimationFormat::Lottie => read_lottie(custom_lottie_path)
+            .and_then(|bytes| validate_lottie(&bytes))
+            .is_ok(),
     }
 }
 
@@ -195,9 +224,8 @@ fn response(
         .expect("static custom-animation response is valid")
 }
 
-fn stored_gif_is_valid(app: &AppHandle) -> bool {
-    let state = app.state::<AppState>();
-    read_bounded(&state.custom_gif_path)
+fn stored_gif_is_valid(path: &Path) -> bool {
+    read_bounded(path)
         .and_then(|bytes| sanitize_gif(&bytes))
         .is_ok()
 }
@@ -381,7 +409,74 @@ fn validate_lottie(bytes: &[u8]) -> Result<Value, ImportError> {
     if budget.layers == 0 {
         return Err(ImportError::InvalidLottieComposition);
     }
+    validate_lottie_precompositions(composition)?;
     Ok(value)
+}
+
+fn validate_lottie_precompositions(
+    composition: &serde_json::Map<String, Value>,
+) -> Result<(), ImportError> {
+    let mut assets = HashMap::<String, &Vec<Value>>::new();
+    if let Some(asset_values) = composition.get("assets") {
+        for asset in asset_values
+            .as_array()
+            .ok_or(ImportError::InvalidLottieComposition)?
+        {
+            let asset = asset
+                .as_object()
+                .ok_or(ImportError::InvalidLottieComposition)?;
+            let id = asset
+                .get("id")
+                .and_then(Value::as_str)
+                .filter(|id| !id.is_empty() && id.len() <= 256)
+                .ok_or(ImportError::InvalidLottiePrecomposition)?;
+            let layers = asset
+                .get("layers")
+                .and_then(Value::as_array)
+                .ok_or(ImportError::InvalidLottiePrecomposition)?;
+            if assets.insert(id.to_string(), layers).is_some() {
+                return Err(ImportError::InvalidLottiePrecomposition);
+            }
+        }
+    }
+
+    let root_layers = composition
+        .get("layers")
+        .and_then(Value::as_array)
+        .ok_or(ImportError::InvalidLottieComposition)?;
+    validate_precomp_layers(root_layers, &assets, &mut HashSet::new(), 0)
+}
+
+fn validate_precomp_layers(
+    layers: &[Value],
+    assets: &HashMap<String, &Vec<Value>>,
+    visiting: &mut HashSet<String>,
+    depth: usize,
+) -> Result<(), ImportError> {
+    if depth > MAX_LOTTIE_PRECOMP_DEPTH {
+        return Err(ImportError::InvalidLottiePrecomposition);
+    }
+    for layer in layers {
+        let object = layer
+            .as_object()
+            .ok_or(ImportError::InvalidLottieComposition)?;
+        if object.get("ty").and_then(Value::as_i64) != Some(0) {
+            continue;
+        }
+        let reference = object
+            .get("refId")
+            .and_then(Value::as_str)
+            .ok_or(ImportError::InvalidLottiePrecomposition)?;
+        let referenced_layers = assets
+            .get(reference)
+            .ok_or(ImportError::InvalidLottiePrecomposition)?;
+        if !visiting.insert(reference.to_string()) {
+            return Err(ImportError::InvalidLottiePrecomposition);
+        }
+        validate_precomp_layers(referenced_layers, assets, visiting, depth + 1)?;
+        visiting.remove(reference);
+    }
+    Ok(())
 }
 
 fn finite_number(value: Option<&Value>) -> Option<f64> {
@@ -783,6 +878,49 @@ mod tests {
     }
 
     #[test]
+    fn rejects_lottie_files_that_are_too_detailed_for_a_popup() {
+        let mut too_many_layers = sample_lottie();
+        let layer = too_many_layers["layers"][0].clone();
+        too_many_layers["layers"] = Value::Array(vec![layer; MAX_LOTTIE_LAYERS + 1]);
+        assert!(matches!(
+            validate_lottie(&serde_json::to_vec(&too_many_layers).unwrap()),
+            Err(ImportError::LottieComplexityExceeded)
+        ));
+
+        let mut too_many_nodes = sample_lottie();
+        too_many_nodes["layers"][0]["extra"] = Value::Array(
+            (0..100)
+                .map(|_| Value::Array(vec![Value::from(0); 250]))
+                .collect(),
+        );
+        assert!(matches!(
+            validate_lottie(&serde_json::to_vec(&too_many_nodes).unwrap()),
+            Err(ImportError::LottieComplexityExceeded)
+        ));
+    }
+
+    #[test]
+    fn rejects_recursive_lottie_precompositions() {
+        let mut recursive = sample_lottie();
+        recursive["layers"] = serde_json::json!([{
+            "ty": 0,
+            "refId": "comp_0"
+        }]);
+        recursive["assets"] = serde_json::json!([{
+            "id": "comp_0",
+            "layers": [{
+                "ty": 0,
+                "refId": "comp_0"
+            }]
+        }]);
+
+        assert!(matches!(
+            validate_lottie(&serde_json::to_vec(&recursive).unwrap()),
+            Err(ImportError::InvalidLottiePrecomposition)
+        ));
+    }
+
+    #[test]
     fn imports_and_reopens_a_lottie_json_file_from_disk() {
         let directory =
             std::env::temp_dir().join(format!("standup-custom-lottie-{}", uuid::Uuid::new_v4()));
@@ -803,6 +941,31 @@ mod tests {
 
         fs::remove_file(source).unwrap();
         fs::remove_file(destination).unwrap();
+        fs::remove_dir(directory).unwrap();
+    }
+
+    #[test]
+    fn invalid_stored_custom_animation_is_not_kept_active() {
+        let directory = std::env::temp_dir().join(format!(
+            "standup-invalid-stored-lottie-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let gif_path = directory.join("custom-animation.gif");
+        let lottie_path = directory.join("custom-animation.json");
+        let mut too_complex = sample_lottie();
+        let layer = too_complex["layers"][0].clone();
+        too_complex["layers"] = Value::Array(vec![layer; MAX_LOTTIE_LAYERS + 1]);
+        fs::write(&lottie_path, serde_json::to_vec(&too_complex).unwrap()).unwrap();
+
+        let settings = Settings {
+            use_custom_animation: true,
+            custom_animation_format: CustomAnimationFormat::Lottie,
+            ..Settings::default()
+        };
+        assert!(!stored_file_is_valid(&settings, &gif_path, &lottie_path));
+
+        fs::remove_file(lottie_path).unwrap();
         fs::remove_dir(directory).unwrap();
     }
 }
