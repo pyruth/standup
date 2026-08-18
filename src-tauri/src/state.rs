@@ -7,11 +7,16 @@ pub struct AppState {
     pub timer: Mutex<TimerEngine>,
     pub popup: Mutex<PopupLifecycle>,
     pub sound_playing: AtomicBool,
-    pub custom_animation_path: PathBuf,
+    pub custom_gif_path: PathBuf,
+    pub custom_lottie_path: PathBuf,
 }
 
 impl AppState {
-    pub fn new(settings: SettingsStore, custom_animation_path: PathBuf) -> Self {
+    pub fn new(
+        settings: SettingsStore,
+        custom_gif_path: PathBuf,
+        custom_lottie_path: PathBuf,
+    ) -> Self {
         let current = settings.get();
         Self {
             timer: Mutex::new(TimerEngine::new(
@@ -21,7 +26,8 @@ impl AppState {
             settings: Mutex::new(settings),
             popup: Mutex::new(PopupLifecycle::default()),
             sound_playing: AtomicBool::new(false),
-            custom_animation_path,
+            custom_gif_path,
+            custom_lottie_path,
         }
     }
 }

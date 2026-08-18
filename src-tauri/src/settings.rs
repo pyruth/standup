@@ -33,6 +33,14 @@ pub enum ReminderSound {
     GentleChime,
 }
 
+#[derive(Debug, Clone, Copy, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CustomAnimationFormat {
+    #[default]
+    Gif,
+    Lottie,
+}
+
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct BlacklistedApp {
@@ -54,6 +62,7 @@ pub struct Settings {
     pub reminder_sound: ReminderSound,
     pub selected_monitor: String,
     pub use_custom_animation: bool,
+    pub custom_animation_format: CustomAnimationFormat,
 }
 
 impl Default for Settings {
@@ -67,6 +76,7 @@ impl Default for Settings {
             reminder_sound: ReminderSound::Off,
             selected_monitor: "primary".into(),
             use_custom_animation: false,
+            custom_animation_format: CustomAnimationFormat::Gif,
         }
     }
 }
@@ -164,9 +174,13 @@ impl SettingsStore {
         Ok(next)
     }
 
-    pub fn use_custom_animation(&mut self) -> Result<Settings, SettingsError> {
+    pub fn use_custom_animation(
+        &mut self,
+        format: CustomAnimationFormat,
+    ) -> Result<Settings, SettingsError> {
         let mut next = self.settings.clone();
         next.use_custom_animation = true;
+        next.custom_animation_format = format;
         self.save(&next)?;
         self.settings = next.clone();
         Ok(next)
@@ -221,6 +235,7 @@ mod tests {
         assert_eq!(settings.reminder_sound, ReminderSound::Off);
         assert_eq!(settings.selected_monitor, "primary");
         assert!(!settings.use_custom_animation);
+        assert_eq!(settings.custom_animation_format, CustomAnimationFormat::Gif);
     }
 
     #[test]
@@ -237,5 +252,23 @@ mod tests {
             result,
             Err(SettingsError::InvalidReminderInterval)
         ));
+    }
+
+    #[test]
+    fn old_custom_gif_settings_migrate_to_the_gif_format() {
+        let settings: Settings = serde_json::from_value(serde_json::json!({
+            "reminderIntervalMinutes": 45,
+            "idleThresholdMinutes": 3,
+            "launchAtLogin": true,
+            "blacklistedApps": [],
+            "reminderPosition": "bottom-right",
+            "reminderSound": "off",
+            "selectedMonitor": "primary",
+            "useCustomAnimation": true
+        }))
+        .unwrap();
+
+        assert!(settings.use_custom_animation);
+        assert_eq!(settings.custom_animation_format, CustomAnimationFormat::Gif);
     }
 }

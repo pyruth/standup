@@ -191,10 +191,11 @@ pub fn run() {
 
             let app_data_directory = app.path().app_data_dir()?;
             let settings_path = app_data_directory.join("settings.json");
-            let custom_animation_path = app_data_directory.join("custom-animation.gif");
+            let custom_gif_path = app_data_directory.join("custom-animation.gif");
+            let custom_lottie_path = app_data_directory.join("custom-animation.json");
             let store = SettingsStore::load(settings_path);
             let launch_at_login = store.get().launch_at_login;
-            app.manage(AppState::new(store, custom_animation_path));
+            app.manage(AppState::new(store, custom_gif_path, custom_lottie_path));
 
             tray::create(app)?;
             apply_autostart(app.handle(), launch_at_login).map_err(std::io::Error::other)?;

@@ -33,6 +33,9 @@ const soundPreviewButton =
 const uploadAnimationButton = byId<HTMLButtonElement>(
   'upload-animation-button'
 );
+const previewAnimationButton = byId<HTMLButtonElement>(
+  'preview-animation-button'
+);
 const copyPromptButton = byId<HTMLButtonElement>('copy-prompt-button');
 const resetAnimationButton = byId<HTMLButtonElement>(
   'reset-animation-button'
@@ -89,9 +92,11 @@ function renderSettings(settings: StandUpSettings): void {
   if (position) {
     position.checked = true;
   }
-  animationStatus.textContent = settings.useCustomAnimation
-    ? 'Using your sanitized custom GIF'
-    : 'Using the built-in StandUp animation';
+  animationStatus.textContent = !settings.useCustomAnimation
+    ? 'Using the built-in StandUp animation'
+    : settings.customAnimationFormat === 'lottie'
+      ? 'Using your validated vector Lottie animation'
+      : 'Using your sanitized custom GIF';
   resetAnimationButton.disabled = !settings.useCustomAnimation;
 }
 
@@ -164,16 +169,16 @@ function technicalPrompt(): string {
   const creativeSection = creativity
     ? `Creative direction from me:\n${creativity}\n\n`
     : '';
-  return `${creativeSection}Create an animated GIF for a small desktop wellness reminder. Keep the creative style, subject, colors, composition, and motion open to the direction above.
+  return `${creativeSection}Create an animation for a small desktop wellness reminder. Keep the creative style, subject, colors, composition, and motion open to the direction above.
 
 Technical delivery requirements:
-- GIF format with animation
+- Deliver either an animated GIF or vector-only Lottie JSON
 - Recommended canvas: 256 × 384 pixels
 - Maximum dimensions: 1024 × 1024 pixels
-- Maximum file size: 15 MB
 - Total duration: 0.5 to 8 seconds
-- Maximum 120 frames
-- Recommended frame rate: 4 to 12 FPS
+- GIF: maximum 15 MB and 120 frames; recommended 4 to 12 FPS
+- Lottie JSON: maximum 2 MB, 60 FPS, and 200 layers
+- Lottie must use vector shapes only: no images, text, fonts, audio, external assets, embedded data, or expressions
 - Seamless infinite loop preferred
 - Transparency is optional
 - No audio
@@ -250,13 +255,18 @@ copyPromptButton.addEventListener('click', () => {
 });
 uploadAnimationButton.addEventListener('click', async () => {
   uploadAnimationButton.disabled = true;
-  uploadAnimationButton.textContent = 'Checking GIF…';
-  setSaving(true, 'Validating and sanitizing your GIF…');
+  uploadAnimationButton.textContent = 'Checking animation…';
+  setSaving(true, 'Validating your animation securely…');
   try {
     const settings = await standUpApi.chooseCustomAnimation();
     if (settings) {
       renderSettings(settings);
-      setSaving(false, 'Custom GIF imported securely');
+      setSaving(
+        false,
+        settings.customAnimationFormat === 'lottie'
+          ? 'Lottie animation imported securely'
+          : 'Custom GIF imported securely'
+      );
       await standUpApi.previewReminder();
     } else {
       setSaving(false);
@@ -265,13 +275,24 @@ uploadAnimationButton.addEventListener('click', async () => {
     setSaving(false, error instanceof Error ? error.message : String(error));
   } finally {
     uploadAnimationButton.disabled = false;
-    uploadAnimationButton.textContent = 'Choose custom GIF';
+    uploadAnimationButton.textContent = 'Choose GIF or Lottie';
+  }
+});
+previewAnimationButton.addEventListener('click', async () => {
+  previewAnimationButton.disabled = true;
+  try {
+    await standUpApi.previewReminder();
+  } catch (error) {
+    setSaving(false, error instanceof Error ? error.message : String(error));
+  } finally {
+    previewAnimationButton.disabled = false;
   }
 });
 resetAnimationButton.addEventListener('click', async () => {
   try {
     renderSettings(await standUpApi.resetCustomAnimation());
     setSaving(false, 'Restored the built-in StandUp animation');
+    await standUpApi.previewReminder();
   } catch (error) {
     setSaving(false, error instanceof Error ? error.message : String(error));
   }

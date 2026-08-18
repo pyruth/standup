@@ -4,6 +4,10 @@ import {
   loadAnimationWithFallback,
   type AnimationImage
 } from '../src/renderer/animation-loader.js';
+import {
+  waitForLottieReady,
+  type LottieAnimationHandle
+} from '../src/renderer/lottie-loader.js';
 
 type Outcome = 'load' | 'load-decode-failure' | 'error';
 
@@ -60,6 +64,40 @@ class FakeAnimationImage {
   }
 }
 
+class FakeLottieAnimation implements LottieAnimationHandle {
+  private readonly listeners = new Map<
+    string,
+    Set<(event?: unknown) => void>
+  >();
+
+  addEventListener(
+    eventName: string,
+    callback: (event?: unknown) => void
+  ): () => void {
+    const listeners = this.listeners.get(eventName) ?? new Set();
+    listeners.add(callback);
+    this.listeners.set(eventName, listeners);
+    return () => listeners.delete(callback);
+  }
+
+  emit(eventName: string): void {
+    for (const listener of this.listeners.get(eventName) ?? []) {
+      listener();
+    }
+  }
+
+  listenerCount(): number {
+    return [...this.listeners.values()].reduce(
+      (count, listeners) => count + listeners.size,
+      0
+    );
+  }
+
+  destroy(): void {}
+
+  play(): void {}
+}
+
 describe('custom animation playback', () => {
   it('acknowledges a custom animation only after load and decode succeed', async () => {
     const image = new FakeAnimationImage({ custom: 'load' });
@@ -94,5 +132,40 @@ describe('custom animation playback', () => {
       loadAnimationWithFallback(image.asImage(), 'custom', 'default', 100)
     ).rejects.toThrow('could not be loaded');
     expect(image.assignedSources).toEqual(['custom', 'default']);
+  });
+
+  it('acknowledges Lottie only after its canvas is ready', async () => {
+    const animation = new FakeLottieAnimation();
+    let canvasReady = false;
+    const checkpoint = waitForLottieReady(
+      animation,
+      () => canvasReady,
+      100
+    );
+
+    canvasReady = true;
+    animation.emit('DOMLoaded');
+
+    await expect(checkpoint).resolves.toBeUndefined();
+    expect(animation.listenerCount()).toBe(0);
+  });
+
+  it('rejects Lottie renderer errors before showing the popup', async () => {
+    const animation = new FakeLottieAnimation();
+    const checkpoint = waitForLottieReady(animation, () => false, 100);
+
+    animation.emit('data_failed');
+
+    await expect(checkpoint).rejects.toThrow('could not be rendered');
+    expect(animation.listenerCount()).toBe(0);
+  });
+
+  it('rejects a Lottie DOMLoaded event without a usable canvas', async () => {
+    const animation = new FakeLottieAnimation();
+    const checkpoint = waitForLottieReady(animation, () => false, 100);
+
+    animation.emit('DOMLoaded');
+
+    await expect(checkpoint).rejects.toThrow('usable canvas');
   });
 });

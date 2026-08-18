@@ -132,7 +132,14 @@
             class="primary-button"
             type="button"
           >
-            Choose custom GIF
+            Choose GIF or Lottie
+          </button>
+          <button
+            id="preview-animation-button"
+            class="secondary-button"
+            type="button"
+          >
+            Preview selected
           </button>
           <button id="copy-prompt-button" class="primary-button" type="button">
             Copy AI prompt
@@ -153,9 +160,10 @@
         ></textarea>
         <p id="animation-status" class="privacy-note"></p>
         <p class="privacy-note">
-          Only upload images you own or have permission to use. Custom GIF
-          import will decode, validate, and sanitize the file before StandUp
-          stores a private copy.
+          Only import animations you own or have permission to use. GIFs are
+          decoded and sanitized. Lottie JSON is limited to vector shapes and
+          checked for expressions, external files, text, fonts, audio, and
+          unsafe complexity. StandUp stores a private copy and works offline.
         </p>
       </section>
 

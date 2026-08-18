@@ -1,6 +1,6 @@
 {
   "name": "standup",
-  "version": "2.0.3",
+  "version": "2.1.0",
   "description": "A private, offline-first stand-up reminder for Windows and Apple Silicon macOS.",
   "private": true,
   "type": "module",
@@ -20,7 +20,8 @@
     "dist:mac": "tauri build --bundles dmg --target aarch64-apple-darwin"
   },
   "dependencies": {
-    "@tauri-apps/api": "2.11.1"
+    "@tauri-apps/api": "2.11.1",
+    "lottie-web": "5.13.0"
   },
   "devDependencies": {
     "@tauri-apps/cli": "2.11.4",

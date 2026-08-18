@@ -31,7 +31,7 @@ struct PopupSession {
     phase: PopupPhase,
     preview: bool,
     position: ReminderPosition,
-    animation_url: String,
+    animation: custom_animation::ActiveAnimation,
 }
 
 #[derive(Debug, Default)]
@@ -57,7 +57,7 @@ impl PopupLifecycle {
         }
         Some(PopupConfiguration {
             position: session.position,
-            animation_url: session.animation_url.clone(),
+            animation: session.animation.clone(),
         })
     }
 
@@ -99,7 +99,7 @@ impl PopupLifecycle {
 #[serde(rename_all = "camelCase")]
 pub struct PopupConfiguration {
     position: ReminderPosition,
-    animation_url: String,
+    animation: custom_animation::ActiveAnimation,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -151,7 +151,7 @@ pub fn show(app: &AppHandle, preview: bool) -> Result<(), String> {
         phase: PopupPhase::Preparing,
         preview,
         position: settings.reminder_position,
-        animation_url: custom_animation::active_url(app, &settings).to_string(),
+        animation: custom_animation::active(app, &settings),
     };
 
     let replaced = {
@@ -435,7 +435,7 @@ mod tests {
             phase,
             preview: true,
             position: ReminderPosition::BottomRight,
-            animation_url: "default".into(),
+            animation: custom_animation::ActiveAnimation::Default,
         }
     }
 

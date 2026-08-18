@@ -1,5 +1,10 @@
-use crate::{settings::Settings, state::AppState};
+use crate::{
+    settings::{CustomAnimationFormat, Settings},
+    state::AppState,
+};
 use gif::{ColorOutput, DecodeOptions, DisposalMethod, Encoder, Frame, Repeat};
+use serde::Serialize;
+use serde_json::Value;
 use std::{
     fs::{self, OpenOptions},
     io::{Cursor, Write},
@@ -9,15 +14,29 @@ use tauri::{http, AppHandle, Manager, UriSchemeContext};
 use thiserror::Error;
 
 const MAX_FILE_BYTES: usize = 15 * 1024 * 1024;
+const MAX_LOTTIE_BYTES: usize = 2 * 1024 * 1024;
 const MAX_DIMENSION: u16 = 1024;
 const MAX_FRAMES: usize = 120;
 const MIN_DURATION_CENTISECONDS: u64 = 50;
 const MAX_DURATION_CENTISECONDS: u64 = 800;
 const MAX_DECODED_PIXELS: u64 = 32_000_000;
+const MAX_LOTTIE_DEPTH: usize = 64;
+const MAX_LOTTIE_NODES: usize = 100_000;
+const MAX_LOTTIE_LAYERS: usize = 200;
+const MAX_LOTTIE_COLLECTION: usize = 5_000;
+const MAX_LOTTIE_STRING: usize = 4_096;
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum ActiveAnimation {
+    Default,
+    Gif { url: String },
+    Lottie { data: Value },
+}
 
 #[derive(Debug, Error)]
 enum ImportError {
-    #[error("Choose a file ending in .gif")]
+    #[error("Choose an animated GIF or a Lottie JSON file")]
     InvalidExtension,
     #[error("The selected file is empty or larger than 15 MB")]
     InvalidFileSize,
@@ -35,40 +54,74 @@ enum ImportError {
     PixelBudgetExceeded,
     #[error("The sanitized GIF is larger than 15 MB")]
     SanitizedFileTooLarge,
-    #[error("StandUp could not store the custom GIF: {0}")]
+    #[error("The Lottie JSON must be between 1 byte and 2 MB")]
+    InvalidLottieFileSize,
+    #[error("The Lottie file is not valid JSON: {0}")]
+    InvalidLottieJson(String),
+    #[error("The Lottie file must define valid width, height, frame rate, and frame range")]
+    InvalidLottieComposition,
+    #[error("The Lottie duration must be between 0.5 and 8 seconds")]
+    InvalidLottieDuration,
+    #[error("The Lottie file is too complex to import safely")]
+    LottieComplexityExceeded,
+    #[error("Only vector Lottie animations are supported; images, text, fonts, and audio are not allowed")]
+    UnsupportedLottieAsset,
+    #[error("Lottie expressions are not allowed")]
+    LottieExpressionNotAllowed,
+    #[error("Lottie files cannot contain external URLs or embedded data assets")]
+    ExternalLottieAsset,
+    #[error("StandUp could not store the custom animation: {0}")]
     Storage(#[from] std::io::Error),
 }
 
 pub fn choose_and_import(app: &AppHandle) -> Result<Option<Settings>, String> {
     let selected = rfd::FileDialog::new()
         .set_title("Choose a custom StandUp animation")
-        .add_filter("Animated GIF", &["gif"])
+        .add_filter("StandUp animation", &["gif", "json"])
         .pick_file();
     let Some(path) = selected else {
         return Ok(None);
     };
 
-    let sanitized = import_from_path(&path).map_err(|error| error.to_string())?;
     let state = app.state::<AppState>();
-    replace_atomically(&state.custom_animation_path, &sanitized)
-        .map_err(|error| error.to_string())?;
+    let extension = path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .map(str::to_ascii_lowercase)
+        .ok_or_else(|| ImportError::InvalidExtension.to_string())?;
+    let (format, destination, stale, sanitized) = match extension.as_str() {
+        "gif" => (
+            CustomAnimationFormat::Gif,
+            &state.custom_gif_path,
+            &state.custom_lottie_path,
+            import_gif_from_path(&path).map_err(|error| error.to_string())?,
+        ),
+        "json" => (
+            CustomAnimationFormat::Lottie,
+            &state.custom_lottie_path,
+            &state.custom_gif_path,
+            import_lottie_from_path(&path).map_err(|error| error.to_string())?,
+        ),
+        _ => return Err(ImportError::InvalidExtension.to_string()),
+    };
+    replace_atomically(destination, &sanitized).map_err(|error| error.to_string())?;
+    let _ = remove_if_exists(stale);
 
     let settings = state
         .settings
         .lock()
         .map_err(|_| "settings state is unavailable".to_string())?
-        .use_custom_animation()
+        .use_custom_animation(format)
         .map_err(|error| error.to_string())?;
     Ok(Some(settings))
 }
 
 pub fn reset(app: &AppHandle) -> Result<Settings, String> {
     let state = app.state::<AppState>();
-    match fs::remove_file(&state.custom_animation_path) {
-        Ok(()) => {}
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
-        Err(error) => return Err(format!("could not remove the custom GIF: {error}")),
-    }
+    remove_if_exists(&state.custom_gif_path)
+        .map_err(|error| format!("could not remove the custom GIF: {error}"))?;
+    remove_if_exists(&state.custom_lottie_path)
+        .map_err(|error| format!("could not remove the custom Lottie animation: {error}"))?;
 
     let settings = state
         .settings
@@ -79,15 +132,28 @@ pub fn reset(app: &AppHandle) -> Result<Settings, String> {
     Ok(settings)
 }
 
-pub fn active_url(app: &AppHandle, settings: &Settings) -> &'static str {
-    if settings.use_custom_animation && stored_animation_is_valid(app) {
-        #[cfg(target_os = "windows")]
-        return "http://standup-animation.localhost/current.gif";
-
-        #[cfg(not(target_os = "windows"))]
-        return "standup-animation://localhost/current.gif";
+pub fn active(app: &AppHandle, settings: &Settings) -> ActiveAnimation {
+    if !settings.use_custom_animation {
+        return ActiveAnimation::Default;
     }
-    "default"
+    let state = app.state::<AppState>();
+    match settings.custom_animation_format {
+        CustomAnimationFormat::Gif if stored_gif_is_valid(app) => {
+            #[cfg(target_os = "windows")]
+            let url = "http://standup-animation.localhost/current.gif";
+
+            #[cfg(not(target_os = "windows"))]
+            let url = "standup-animation://localhost/current.gif";
+
+            ActiveAnimation::Gif { url: url.into() }
+        }
+        CustomAnimationFormat::Lottie => read_lottie(&state.custom_lottie_path)
+            .ok()
+            .and_then(|bytes| validate_lottie(&bytes).ok())
+            .map(|data| ActiveAnimation::Lottie { data })
+            .unwrap_or(ActiveAnimation::Default),
+        _ => ActiveAnimation::Default,
+    }
 }
 
 pub fn protocol_response(
@@ -103,7 +169,7 @@ pub fn protocol_response(
     }
 
     let state = context.app_handle().state::<AppState>();
-    match read_bounded(&state.custom_animation_path) {
+    match read_bounded(&state.custom_gif_path) {
         Ok(bytes) if has_gif_signature(&bytes) => {
             response(http::StatusCode::OK, bytes, "image/gif")
         }
@@ -129,14 +195,14 @@ fn response(
         .expect("static custom-animation response is valid")
 }
 
-fn stored_animation_is_valid(app: &AppHandle) -> bool {
+fn stored_gif_is_valid(app: &AppHandle) -> bool {
     let state = app.state::<AppState>();
-    read_bounded(&state.custom_animation_path)
+    read_bounded(&state.custom_gif_path)
         .and_then(|bytes| sanitize_gif(&bytes))
         .is_ok()
 }
 
-fn import_from_path(path: &Path) -> Result<Vec<u8>, ImportError> {
+fn import_gif_from_path(path: &Path) -> Result<Vec<u8>, ImportError> {
     if !path
         .extension()
         .and_then(|extension| extension.to_str())
@@ -148,6 +214,20 @@ fn import_from_path(path: &Path) -> Result<Vec<u8>, ImportError> {
     sanitize_gif(&bytes)
 }
 
+fn import_lottie_from_path(path: &Path) -> Result<Vec<u8>, ImportError> {
+    if !path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("json"))
+    {
+        return Err(ImportError::InvalidExtension);
+    }
+    let bytes = read_lottie(path)?;
+    let validated = validate_lottie(&bytes)?;
+    serde_json::to_vec(&validated)
+        .map_err(|error| ImportError::InvalidLottieJson(error.to_string()))
+}
+
 fn read_bounded(path: &Path) -> Result<Vec<u8>, ImportError> {
     let metadata = fs::metadata(path)?;
     if metadata.len() == 0 || metadata.len() > MAX_FILE_BYTES as u64 {
@@ -156,6 +236,18 @@ fn read_bounded(path: &Path) -> Result<Vec<u8>, ImportError> {
     let bytes = fs::read(path)?;
     if bytes.is_empty() || bytes.len() > MAX_FILE_BYTES {
         return Err(ImportError::InvalidFileSize);
+    }
+    Ok(bytes)
+}
+
+fn read_lottie(path: &Path) -> Result<Vec<u8>, ImportError> {
+    let metadata = fs::metadata(path)?;
+    if metadata.len() == 0 || metadata.len() > MAX_LOTTIE_BYTES as u64 {
+        return Err(ImportError::InvalidLottieFileSize);
+    }
+    let bytes = fs::read(path)?;
+    if bytes.is_empty() || bytes.len() > MAX_LOTTIE_BYTES {
+        return Err(ImportError::InvalidLottieFileSize);
     }
     Ok(bytes)
 }
@@ -239,6 +331,181 @@ fn sanitize_gif(bytes: &[u8]) -> Result<Vec<u8>, ImportError> {
     Ok(output)
 }
 
+#[derive(Default)]
+struct LottieBudget {
+    nodes: usize,
+    layers: usize,
+}
+
+fn validate_lottie(bytes: &[u8]) -> Result<Value, ImportError> {
+    if bytes.is_empty() || bytes.len() > MAX_LOTTIE_BYTES {
+        return Err(ImportError::InvalidLottieFileSize);
+    }
+    let value: Value = serde_json::from_slice(bytes)
+        .map_err(|error| ImportError::InvalidLottieJson(error.to_string()))?;
+    let composition = value
+        .as_object()
+        .ok_or(ImportError::InvalidLottieComposition)?;
+
+    let width = composition.get("w").and_then(Value::as_u64);
+    let height = composition.get("h").and_then(Value::as_u64);
+    let frame_rate = finite_number(composition.get("fr"));
+    let first_frame = finite_number(composition.get("ip"));
+    let last_frame = finite_number(composition.get("op"));
+    let version_valid = composition
+        .get("v")
+        .and_then(Value::as_str)
+        .is_some_and(|version| !version.is_empty() && version.len() <= 32);
+    if !version_valid
+        || !width.is_some_and(|value| (1..=u64::from(MAX_DIMENSION)).contains(&value))
+        || !height.is_some_and(|value| (1..=u64::from(MAX_DIMENSION)).contains(&value))
+        || !frame_rate.is_some_and(|value| (1.0..=60.0).contains(&value))
+        || first_frame.is_none()
+        || last_frame.is_none()
+    {
+        return Err(ImportError::InvalidLottieComposition);
+    }
+    let frame_rate = frame_rate.unwrap_or_default();
+    let first_frame = first_frame.unwrap_or_default();
+    let last_frame = last_frame.unwrap_or_default();
+    let duration = (last_frame - first_frame) / frame_rate;
+    if !(0.5..=8.0).contains(&duration) {
+        return Err(ImportError::InvalidLottieDuration);
+    }
+    if composition.contains_key("fonts") || composition.contains_key("chars") {
+        return Err(ImportError::UnsupportedLottieAsset);
+    }
+
+    let mut budget = LottieBudget::default();
+    validate_lottie_value(&value, 0, &mut budget)?;
+    if budget.layers == 0 {
+        return Err(ImportError::InvalidLottieComposition);
+    }
+    Ok(value)
+}
+
+fn finite_number(value: Option<&Value>) -> Option<f64> {
+    value
+        .and_then(Value::as_f64)
+        .filter(|number| number.is_finite())
+}
+
+fn validate_lottie_value(
+    value: &Value,
+    depth: usize,
+    budget: &mut LottieBudget,
+) -> Result<(), ImportError> {
+    if depth > MAX_LOTTIE_DEPTH {
+        return Err(ImportError::LottieComplexityExceeded);
+    }
+    budget.nodes = budget.nodes.saturating_add(1);
+    if budget.nodes > MAX_LOTTIE_NODES {
+        return Err(ImportError::LottieComplexityExceeded);
+    }
+
+    match value {
+        Value::Array(values) => {
+            if values.len() > MAX_LOTTIE_COLLECTION {
+                return Err(ImportError::LottieComplexityExceeded);
+            }
+            for value in values {
+                validate_lottie_value(value, depth + 1, budget)?;
+            }
+        }
+        Value::Object(object) => {
+            if object.len() > 512 {
+                return Err(ImportError::LottieComplexityExceeded);
+            }
+            for (key, value) in object {
+                if key.len() > 128 {
+                    return Err(ImportError::LottieComplexityExceeded);
+                }
+                if key == "x"
+                    && value
+                        .as_str()
+                        .is_some_and(|expression| !expression.is_empty())
+                {
+                    return Err(ImportError::LottieExpressionNotAllowed);
+                }
+                if key == "layers" {
+                    validate_lottie_layers(value, depth + 1, budget)?;
+                    continue;
+                }
+                if key == "assets" {
+                    validate_lottie_assets(value, depth + 1, budget)?;
+                    continue;
+                }
+                validate_lottie_value(value, depth + 1, budget)?;
+            }
+        }
+        Value::String(value) => {
+            if value.len() > MAX_LOTTIE_STRING {
+                return Err(ImportError::LottieComplexityExceeded);
+            }
+            let normalized = value.trim().to_ascii_lowercase();
+            if ["http:", "https:", "file:", "data:", "blob:", "//"]
+                .iter()
+                .any(|prefix| normalized.starts_with(prefix))
+            {
+                return Err(ImportError::ExternalLottieAsset);
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+fn validate_lottie_layers(
+    value: &Value,
+    depth: usize,
+    budget: &mut LottieBudget,
+) -> Result<(), ImportError> {
+    let layers = value
+        .as_array()
+        .ok_or(ImportError::InvalidLottieComposition)?;
+    budget.layers = budget.layers.saturating_add(layers.len());
+    if budget.layers > MAX_LOTTIE_LAYERS {
+        return Err(ImportError::LottieComplexityExceeded);
+    }
+    for layer in layers {
+        let object = layer
+            .as_object()
+            .ok_or(ImportError::InvalidLottieComposition)?;
+        let layer_type = object
+            .get("ty")
+            .and_then(Value::as_i64)
+            .ok_or(ImportError::InvalidLottieComposition)?;
+        if !matches!(layer_type, 0 | 1 | 3 | 4) {
+            return Err(ImportError::UnsupportedLottieAsset);
+        }
+        validate_lottie_value(layer, depth + 1, budget)?;
+    }
+    Ok(())
+}
+
+fn validate_lottie_assets(
+    value: &Value,
+    depth: usize,
+    budget: &mut LottieBudget,
+) -> Result<(), ImportError> {
+    let assets = value
+        .as_array()
+        .ok_or(ImportError::InvalidLottieComposition)?;
+    if assets.len() > MAX_LOTTIE_COLLECTION {
+        return Err(ImportError::LottieComplexityExceeded);
+    }
+    for asset in assets {
+        let object = asset
+            .as_object()
+            .ok_or(ImportError::InvalidLottieComposition)?;
+        if object.contains_key("p") || object.contains_key("u") || object.contains_key("e") {
+            return Err(ImportError::UnsupportedLottieAsset);
+        }
+        validate_lottie_value(asset, depth + 1, budget)?;
+    }
+    Ok(())
+}
+
 fn replace_atomically(destination: &Path, bytes: &[u8]) -> Result<(), ImportError> {
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent)?;
@@ -261,7 +528,19 @@ fn replace_atomically(destination: &Path, bytes: &[u8]) -> Result<(), ImportErro
 }
 
 fn pending_path(destination: &Path) -> PathBuf {
-    destination.with_file_name("custom-animation.pending.gif")
+    let extension = destination
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .unwrap_or("data");
+    destination.with_file_name(format!("custom-animation.pending.{extension}"))
+}
+
+fn remove_if_exists(path: &Path) -> std::io::Result<()> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error),
+    }
 }
 
 #[cfg(target_os = "windows")]
@@ -319,6 +598,50 @@ mod tests {
         bytes
     }
 
+    fn sample_lottie() -> Value {
+        serde_json::json!({
+            "v": "5.13.0",
+            "fr": 30,
+            "ip": 0,
+            "op": 60,
+            "w": 256,
+            "h": 384,
+            "layers": [{
+                "ddd": 0,
+                "ind": 1,
+                "ty": 4,
+                "nm": "StandUp shape",
+                "sr": 1,
+                "ks": {
+                    "o": { "a": 0, "k": 100 },
+                    "r": { "a": 0, "k": 0 },
+                    "p": { "a": 0, "k": [128, 192, 0] },
+                    "a": { "a": 0, "k": [0, 0, 0] },
+                    "s": { "a": 0, "k": [100, 100, 100] }
+                },
+                "shapes": [
+                    {
+                        "ty": "el",
+                        "p": { "a": 0, "k": [0, 0] },
+                        "s": { "a": 0, "k": [80, 80] },
+                        "nm": "Ellipse"
+                    },
+                    {
+                        "ty": "fl",
+                        "c": { "a": 0, "k": [1, 0.4, 0.2, 1] },
+                        "o": { "a": 0, "k": 100 },
+                        "r": 1,
+                        "nm": "Fill"
+                    }
+                ],
+                "ip": 0,
+                "op": 60,
+                "st": 0,
+                "bm": 0
+            }]
+        })
+    }
+
     #[test]
     fn rejects_non_gif_content() {
         assert!(matches!(
@@ -365,7 +688,7 @@ mod tests {
         let destination = directory.join("custom-animation.gif");
         fs::write(&source, sample_gif(25)).unwrap();
 
-        let sanitized = import_from_path(&source).unwrap();
+        let sanitized = import_gif_from_path(&source).unwrap();
         replace_atomically(&destination, &sanitized).unwrap();
         let stored = read_bounded(&destination).unwrap();
         assert_eq!(stored, sanitized);
@@ -402,12 +725,83 @@ mod tests {
         fs::write(&rejected, b"not a gif").unwrap();
 
         assert!(matches!(
-            import_from_path(&rejected),
+            import_gif_from_path(&rejected),
             Err(ImportError::InvalidSignature)
         ));
         assert_eq!(fs::read(&destination).unwrap(), original);
 
         fs::remove_file(rejected).unwrap();
+        fs::remove_file(destination).unwrap();
+        fs::remove_dir(directory).unwrap();
+    }
+
+    #[test]
+    fn accepts_and_canonicalizes_a_vector_lottie_animation() {
+        let bytes = serde_json::to_vec_pretty(&sample_lottie()).unwrap();
+        let validated = validate_lottie(&bytes).unwrap();
+        let canonical = serde_json::to_vec(&validated).unwrap();
+
+        assert!(canonical.len() < bytes.len());
+        assert!(validate_lottie(&canonical).is_ok());
+    }
+
+    #[test]
+    fn rejects_lottie_expressions_and_external_assets() {
+        let mut expression = sample_lottie();
+        expression["layers"][0]["ks"]["r"]["x"] = Value::String("time * 10".into());
+        assert!(matches!(
+            validate_lottie(&serde_json::to_vec(&expression).unwrap()),
+            Err(ImportError::LottieExpressionNotAllowed)
+        ));
+
+        let mut external = sample_lottie();
+        external["assets"] = serde_json::json!([{
+            "id": "image_0",
+            "p": "https://example.com/image.png"
+        }]);
+        assert!(matches!(
+            validate_lottie(&serde_json::to_vec(&external).unwrap()),
+            Err(ImportError::UnsupportedLottieAsset)
+        ));
+    }
+
+    #[test]
+    fn rejects_lottie_text_and_out_of_range_duration() {
+        let mut text = sample_lottie();
+        text["layers"][0]["ty"] = Value::from(5);
+        assert!(matches!(
+            validate_lottie(&serde_json::to_vec(&text).unwrap()),
+            Err(ImportError::UnsupportedLottieAsset)
+        ));
+
+        let mut too_long = sample_lottie();
+        too_long["op"] = Value::from(300);
+        assert!(matches!(
+            validate_lottie(&serde_json::to_vec(&too_long).unwrap()),
+            Err(ImportError::InvalidLottieDuration)
+        ));
+    }
+
+    #[test]
+    fn imports_and_reopens_a_lottie_json_file_from_disk() {
+        let directory =
+            std::env::temp_dir().join(format!("standup-custom-lottie-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&directory).unwrap();
+        let source = directory.join("My Reminder.JSON");
+        let destination = directory.join("custom-animation.json");
+        fs::write(
+            &source,
+            serde_json::to_vec_pretty(&sample_lottie()).unwrap(),
+        )
+        .unwrap();
+
+        let sanitized = import_lottie_from_path(&source).unwrap();
+        replace_atomically(&destination, &sanitized).unwrap();
+        let stored = read_lottie(&destination).unwrap();
+        assert_eq!(stored, sanitized);
+        assert!(validate_lottie(&stored).is_ok());
+
+        fs::remove_file(source).unwrap();
         fs::remove_file(destination).unwrap();
         fs::remove_dir(directory).unwrap();
     }

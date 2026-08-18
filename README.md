@@ -24,11 +24,13 @@ remote assets, HTTP client, localhost server, or runtime network calls.
 - Launch at login enabled by default
 - Tray/menu-bar controls for pause, resume, preview, settings, and quit
 - Fresh, always-on-top, non-focusable, click-through popup for every reminder,
-  shown only after the GIF has loaded and decoded
+  shown only after its GIF or Lottie canvas is render-ready
 - Nine reminder positions and automatic/specific monitor selection
-- Local creative prompt builder for making a custom GIF with any AI provider
-- Secure native custom-GIF picker with validation, sanitizing re-encode, private
-  storage, preview, and reset to the built-in animation
+- Local creative prompt builder for making a custom GIF or vector Lottie JSON
+  with any AI provider
+- Secure native animation picker with GIF sanitizing or strict vector-only
+  Lottie validation, private storage, selected-animation preview, and reset to
+  the built-in animation
 - Silent-by-default system beep, one-second soft chime, and two-second gentle
   chime with sound testing
 - Per-window Tauri capabilities and a strict local-only CSP
@@ -87,4 +89,5 @@ signing/notarization.
 
 Preferences are stored only in the operating system’s per-user application-data
 directory. Active-time progress remains in memory and resets after the app
-restarts. The default animation is packaged inside the application.
+restarts. The default animation and Lottie renderer are packaged inside the
+application; custom animations never require a network connection.

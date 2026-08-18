@@ -24,16 +24,18 @@ build.
 - Pause/resume commands, single-instance behavior, launch at login, and tray
   controls.
 - Fresh click-through window for every reminder with a renderer-ready
-  checkpoint, custom-GIF fallback, and guarded eight-second lifecycle.
+  checkpoint, custom-animation fallback, and guarded eight-second lifecycle.
 - Work-area-aware nine-position placement and monitor selection with primary
   monitor fallback.
 - Strict local-only CSP and no updater/network dependencies.
 - Settings UI for timing, position, monitor, sound choice, local AI prompt
   construction, preview, and reset-to-default.
 - Native system beep and bundled original one- and two-second offline chimes.
-- Secure custom GIF picker with bounded reads, GIF signature and frame
-  validation, decode/re-encode sanitization, metadata stripping, atomic private
-  storage, preview, corruption fallback, and reset.
+- Secure custom animation picker with bounded reads, GIF decode/re-encode
+  sanitization, and vector-only Lottie JSON validation. Lottie imports reject
+  expressions, external or embedded assets, images, text, fonts, audio, and
+  excessive complexity. Both formats use atomic private storage, an explicit
+  selected-animation preview, corruption fallback, and reset.
 - Live tray status showing remaining time, pause time, due state, or popup state.
 - Native Rust unit tests plus existing TypeScript tests.
 
@@ -44,7 +46,7 @@ build.
 - Display hot-plug handling while the popup is already visible.
 - Native full-screen behavior verification on macOS.
 - Signed/notarized macOS distribution and signed Windows distribution.
-- End-to-end installer smoke tests and malformed-GIF corpus tests.
+- End-to-end installer smoke tests plus malformed GIF and Lottie corpus tests.
 
 ## Local prerequisites
 

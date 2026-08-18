@@ -22,6 +22,7 @@ export const REMINDER_SOUNDS = [
 
 export type ReminderPosition = (typeof REMINDER_POSITIONS)[number];
 export type ReminderSound = (typeof REMINDER_SOUNDS)[number]['value'];
+export type CustomAnimationFormat = 'gif' | 'lottie';
 
 export interface BlacklistedApp {
   id: string;
@@ -40,6 +41,7 @@ export interface StandUpSettings {
   reminderSound: ReminderSound;
   selectedMonitor: string;
   useCustomAnimation: boolean;
+  customAnimationFormat: CustomAnimationFormat;
 }
 
 export type SettingsPatch = Partial<

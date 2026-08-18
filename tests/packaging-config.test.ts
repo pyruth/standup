@@ -59,6 +59,10 @@ describe('Tauri v2 release packaging configuration', () => {
     );
   });
 
+  it('pins the offline Lottie renderer dependency', () => {
+    expect(packageJson.dependencies['lottie-web']).toBe('5.13.0');
+  });
+
   it('uses explicit per-window capabilities', () => {
     expect(tauriConfig.app.security.capabilities).toEqual([
       'settings',
