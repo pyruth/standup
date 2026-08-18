@@ -355,4 +355,60 @@ mod tests {
         let sanitized = sanitize_gif(bundled).unwrap();
         assert!(has_gif_signature(&sanitized));
     }
+
+    #[test]
+    fn imports_stores_and_reopens_a_custom_gif_from_disk() {
+        let directory =
+            std::env::temp_dir().join(format!("standup-custom-animation-{}", uuid::Uuid::new_v4()));
+        fs::create_dir(&directory).unwrap();
+        let source = directory.join("My Reminder.GIF");
+        let destination = directory.join("custom-animation.gif");
+        fs::write(&source, sample_gif(25)).unwrap();
+
+        let sanitized = import_from_path(&source).unwrap();
+        replace_atomically(&destination, &sanitized).unwrap();
+        let stored = read_bounded(&destination).unwrap();
+        assert_eq!(stored, sanitized);
+
+        let mut decoder = DecodeOptions::new().read_info(Cursor::new(stored)).unwrap();
+        assert_eq!(decoder.width(), 2);
+        assert_eq!(decoder.height(), 2);
+        assert_eq!(decoder.repeat(), Repeat::Infinite);
+        let mut frames = 0;
+        let mut duration = 0u64;
+        while let Some(frame) = decoder.read_next_frame().unwrap() {
+            frames += 1;
+            duration += u64::from(frame.delay);
+        }
+        assert_eq!(frames, 2);
+        assert_eq!(duration, 50);
+
+        fs::remove_file(source).unwrap();
+        fs::remove_file(destination).unwrap();
+        fs::remove_dir(directory).unwrap();
+    }
+
+    #[test]
+    fn rejected_custom_gif_never_replaces_the_stored_animation() {
+        let directory = std::env::temp_dir().join(format!(
+            "standup-custom-animation-rejection-{}",
+            uuid::Uuid::new_v4()
+        ));
+        fs::create_dir(&directory).unwrap();
+        let destination = directory.join("custom-animation.gif");
+        let rejected = directory.join("broken.gif");
+        let original = sanitize_gif(&sample_gif(25)).unwrap();
+        replace_atomically(&destination, &original).unwrap();
+        fs::write(&rejected, b"not a gif").unwrap();
+
+        assert!(matches!(
+            import_from_path(&rejected),
+            Err(ImportError::InvalidSignature)
+        ));
+        assert_eq!(fs::read(&destination).unwrap(), original);
+
+        fs::remove_file(rejected).unwrap();
+        fs::remove_file(destination).unwrap();
+        fs::remove_dir(directory).unwrap();
+    }
 }

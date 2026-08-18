@@ -1,4 +1,5 @@
 import { invoke } from '@tauri-apps/api/core';
+import { loadAnimationWithFallback } from './animation-loader.js';
 import defaultAnimationUrl from './assets/standup-reminder.gif?url';
 
 interface PopupConfiguration {
@@ -8,46 +9,6 @@ interface PopupConfiguration {
 
 const LOAD_TIMEOUT_MILLISECONDS = 3_500;
 const reminder = document.querySelector<HTMLImageElement>('.reminder');
-
-function loadAnimation(image: HTMLImageElement, source: string): Promise<void> {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const timeout = window.setTimeout(() => {
-      finish(new Error('The reminder GIF did not load in time'));
-    }, LOAD_TIMEOUT_MILLISECONDS);
-
-    const cleanup = () => {
-      window.clearTimeout(timeout);
-      image.removeEventListener('load', handleLoad);
-      image.removeEventListener('error', handleError);
-    };
-    const finish = (error?: Error) => {
-      if (settled) {
-        return;
-      }
-      settled = true;
-      cleanup();
-      if (error) {
-        reject(error);
-      } else {
-        resolve();
-      }
-    };
-    const handleLoad = () => finish();
-    const handleError = () => finish(new Error('The reminder GIF could not be loaded'));
-
-    image.addEventListener('load', handleLoad);
-    image.addEventListener('error', handleError);
-    image.src = source;
-    if (image.complete) {
-      if (image.naturalWidth > 0) {
-        finish();
-      } else {
-        handleError();
-      }
-    }
-  });
-}
 
 async function prepareReminder(): Promise<void> {
   if (!reminder) {
@@ -60,22 +21,12 @@ async function prepareReminder(): Promise<void> {
       ? defaultAnimationUrl
       : `${configuration.animationUrl}?v=${Date.now()}`;
 
-  const loadAndDecode = async (source: string) => {
-    await loadAnimation(reminder, source);
-    await reminder.decode();
-    if (!reminder.complete || reminder.naturalWidth === 0) {
-      throw new Error('The reminder GIF did not decode correctly');
-    }
-  };
-
-  try {
-    await loadAndDecode(animationUrl);
-  } catch (error) {
-    if (configuration.animationUrl === 'default') {
-      throw error;
-    }
-    await loadAndDecode(defaultAnimationUrl);
-  }
+  await loadAnimationWithFallback(
+    reminder,
+    animationUrl,
+    defaultAnimationUrl,
+    LOAD_TIMEOUT_MILLISECONDS
+  );
 
   reminder.dataset.position = configuration.position;
   await invoke<void>('popup_ready');
