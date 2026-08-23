@@ -51,45 +51,45 @@ export interface MelloPalette {
 export const MELLO_PALETTES: readonly MelloPalette[] = [
   {
     name: 'apricot',
-    body: '#F2A171',
-    underside: '#D97B57',
+    body: '#FFB27D',
+    underside: '#E98A60',
     face: '#303237',
     message: '#FFF3E9'
   },
   {
     name: 'sage',
-    body: '#9FB6A0',
-    underside: '#718D78',
+    body: '#B8D2B4',
+    underside: '#82A78A',
     face: '#27312C',
     message: '#F1F6EE'
   },
   {
     name: 'periwinkle',
-    body: '#A8B2DA',
-    underside: '#7D86B4',
+    body: '#C0C9F4',
+    underside: '#909DD5',
     face: '#2D3040',
     message: '#F2F1FC'
   },
   {
     name: 'cream',
-    body: '#EFD6A3',
-    underside: '#CEA967',
+    body: '#FFE2A8',
+    underside: '#DDB871',
     face: '#353128',
     message: '#FFF8E8'
   },
   {
     name: 'coral',
-    body: '#E98473',
-    underside: '#BD5E55',
+    body: '#FF9885',
+    underside: '#D96E63',
     face: '#342B2B',
     message: '#FFF0EC'
   },
   {
-    name: 'charcoal',
-    body: '#484A50',
-    underside: '#2D2F34',
-    face: '#F0E8D8',
-    message: '#F2EEE7'
+    name: 'blueberry',
+    body: '#8494D8',
+    underside: '#596BB4',
+    face: '#252A43',
+    message: '#EEF0FF'
   }
 ] as const;
 

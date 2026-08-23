@@ -84,10 +84,18 @@ function createBlobPath(
     bottom - height * 0.05
   );
   path.bezierCurveTo(
-    centerX + width * 0.3,
-    bottom + driftA,
-    centerX - width * 0.28,
-    bottom + driftB,
+    right - width * 0.09,
+    bottom + height * 0.015,
+    centerX + width * 0.22,
+    bottom + height * 0.035 + driftA,
+    centerX,
+    bottom + height * 0.018
+  );
+  path.bezierCurveTo(
+    centerX - width * 0.22,
+    bottom + height * 0.035 + driftB,
+    left + width * 0.09,
+    bottom + height * 0.01,
     left + width * 0.08,
     bottom - height * 0.06
   );
@@ -112,8 +120,8 @@ function createBellyPath(
   wobble: number
 ): Path2D {
   const path = new Path2D();
-  const left = centerX - width * 0.45;
-  const right = centerX + width * 0.45;
+  const left = centerX - width * 0.56;
+  const right = centerX + width * 0.56;
   const seamY = centerY + height * 0.27;
   const bottomY = centerY + height * 0.49;
   const roll = Math.sin(elapsed * 2.35 + 0.8) * height * 0.012 * wobble;
@@ -127,15 +135,8 @@ function createBellyPath(
     right,
     seamY - roll
   );
-  path.lineTo(centerX + width * 0.43, bottomY);
-  path.bezierCurveTo(
-    centerX + width * 0.2,
-    bottomY + height * 0.04,
-    centerX - width * 0.25,
-    bottomY + height * 0.035,
-    centerX - width * 0.43,
-    bottomY - height * 0.01
-  );
+  path.lineTo(centerX + width * 0.6, bottomY + height * 0.14);
+  path.lineTo(centerX - width * 0.6, bottomY + height * 0.14);
   path.closePath();
   return path;
 }
@@ -377,13 +378,13 @@ export function createMelloRenderer(
     context.strokeStyle = 'rgba(30, 31, 36, 0.12)';
     context.lineWidth = 2;
     context.beginPath();
-    context.moveTo(centerX - blobWidth * 0.39, centerY + blobHeight * 0.28);
+    context.moveTo(centerX - blobWidth * 0.48, centerY + blobHeight * 0.28);
     context.bezierCurveTo(
       centerX - blobWidth * 0.19,
       centerY + blobHeight * 0.22,
       centerX + blobWidth * 0.19,
       centerY + blobHeight * 0.34,
-      centerX + blobWidth * 0.39,
+      centerX + blobWidth * 0.48,
       centerY + blobHeight * 0.27
     );
     context.stroke();
