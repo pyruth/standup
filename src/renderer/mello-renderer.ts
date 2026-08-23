@@ -103,6 +103,72 @@ function createBlobPath(
   return path;
 }
 
+function createBellyPath(
+  centerX: number,
+  centerY: number,
+  width: number,
+  height: number,
+  elapsed: number,
+  wobble: number
+): Path2D {
+  const path = new Path2D();
+  const left = centerX - width * 0.45;
+  const right = centerX + width * 0.45;
+  const seamY = centerY + height * 0.27;
+  const bottomY = centerY + height * 0.49;
+  const roll = Math.sin(elapsed * 2.35 + 0.8) * height * 0.012 * wobble;
+
+  path.moveTo(left, seamY + roll);
+  path.bezierCurveTo(
+    centerX - width * 0.24,
+    seamY - height * 0.055,
+    centerX + width * 0.18,
+    seamY + height * 0.055,
+    right,
+    seamY - roll
+  );
+  path.lineTo(centerX + width * 0.43, bottomY);
+  path.bezierCurveTo(
+    centerX + width * 0.2,
+    bottomY + height * 0.04,
+    centerX - width * 0.25,
+    bottomY + height * 0.035,
+    centerX - width * 0.43,
+    bottomY - height * 0.01
+  );
+  path.closePath();
+  return path;
+}
+
+function drawContactShadow(
+  context: CanvasRenderingContext2D,
+  centerX: number,
+  centerY: number,
+  blobWidth: number,
+  blobHeight: number,
+  scaleX: number,
+  scaleY: number,
+  lift: number
+): void {
+  const compression = Math.max(0, Math.min(1, 1 - lift / 32));
+  context.save();
+  context.globalAlpha = 0.1 + compression * 0.1;
+  context.filter = 'blur(7px)';
+  context.fillStyle = '#17181c';
+  context.beginPath();
+  context.ellipse(
+    centerX,
+    centerY + blobHeight * scaleY * 0.49 + 7,
+    blobWidth * scaleX * (0.31 + compression * 0.08),
+    5 + compression * 3,
+    0,
+    0,
+    Math.PI * 2
+  );
+  context.fill();
+  context.restore();
+}
+
 function behaviorTargets(
   behavior: MelloBehavior,
   elapsed: number,
@@ -240,13 +306,23 @@ export function createMelloRenderer(
     context.save();
     const centerX = width / 2 + state.x.value;
     const centerY = height * 0.62 + state.y.value;
+    const blobWidth = Math.min(width * 0.84, 230);
+    const blobHeight = Math.min(height * 0.37, 146);
+    drawContactShadow(
+      context,
+      centerX,
+      centerY,
+      blobWidth,
+      blobHeight,
+      state.scaleX.value,
+      state.scaleY.value,
+      Math.max(0, -state.y.value)
+    );
     context.translate(centerX, centerY);
     context.rotate(state.rotation.value);
     context.scale(state.scaleX.value, state.scaleY.value);
     context.translate(-centerX, -centerY);
 
-    const blobWidth = Math.min(width * 0.84, 230);
-    const blobHeight = Math.min(height * 0.37, 146);
     const path = createBlobPath(
       context,
       centerX,
@@ -260,18 +336,69 @@ export function createMelloRenderer(
     context.fill(path);
     context.save();
     context.clip(path);
-    context.fillStyle = palette.underside;
-    context.beginPath();
-    context.ellipse(
+
+    const bodyDepth = context.createLinearGradient(
       centerX,
-      centerY + blobHeight * 0.43,
-      blobWidth * 0.55,
-      blobHeight * 0.14,
-      0,
-      0,
-      Math.PI * 2
+      centerY - blobHeight * 0.32,
+      centerX,
+      centerY + blobHeight * 0.5
     );
-    context.fill();
+    bodyDepth.addColorStop(0, 'rgba(255, 255, 255, 0.08)');
+    bodyDepth.addColorStop(0.58, 'rgba(255, 255, 255, 0)');
+    bodyDepth.addColorStop(1, 'rgba(30, 31, 36, 0.16)');
+    context.fillStyle = bodyDepth;
+    context.fillRect(
+      centerX - blobWidth / 2,
+      centerY - blobHeight / 2,
+      blobWidth,
+      blobHeight
+    );
+
+    const belly = createBellyPath(
+      centerX,
+      centerY,
+      blobWidth,
+      blobHeight,
+      elapsed,
+      reducedMotion ? 0 : 1
+    );
+    const bellyDepth = context.createLinearGradient(
+      centerX,
+      centerY + blobHeight * 0.24,
+      centerX,
+      centerY + blobHeight * 0.53
+    );
+    bellyDepth.addColorStop(0, palette.underside);
+    bellyDepth.addColorStop(0.68, palette.underside);
+    bellyDepth.addColorStop(1, 'rgba(28, 29, 33, 0.46)');
+    context.fillStyle = bellyDepth;
+    context.fill(belly);
+
+    context.strokeStyle = 'rgba(30, 31, 36, 0.12)';
+    context.lineWidth = 2;
+    context.beginPath();
+    context.moveTo(centerX - blobWidth * 0.39, centerY + blobHeight * 0.28);
+    context.bezierCurveTo(
+      centerX - blobWidth * 0.19,
+      centerY + blobHeight * 0.22,
+      centerX + blobWidth * 0.19,
+      centerY + blobHeight * 0.34,
+      centerX + blobWidth * 0.39,
+      centerY + blobHeight * 0.27
+    );
+    context.stroke();
+
+    context.strokeStyle = 'rgba(255, 255, 255, 0.11)';
+    context.lineWidth = 3;
+    context.beginPath();
+    context.arc(
+      centerX,
+      centerY + blobHeight * 0.42,
+      blobWidth * 0.31,
+      0.2,
+      Math.PI - 0.2
+    );
+    context.stroke();
     context.restore();
 
     const faceX = centerX - blobWidth * 0.02;
