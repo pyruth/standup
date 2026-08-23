@@ -9,8 +9,8 @@ build.
 - Windows x64 and Apple Silicon macOS are the only release targets.
 - Runtime behavior is fully offline. There is no updater, analytics,
   telemetry, account, ad, remote asset, HTTP, or localhost plugin.
-- The built-in StandUp GIF remains packaged with the app and is always the
-  fallback.
+- Mello, the code-drawn interactive jelly mascot, is the built-in default and
+  fallback. It works fully offline without an animation asset.
 - Settings are stored locally in the Tauri application-data directory.
 - Launch at login defaults to enabled.
 - The settings and reminder webviews have separate, minimal capabilities.
@@ -25,6 +25,10 @@ build.
   controls.
 - Fresh click-through window for every reminder with a renderer-ready
   checkpoint, custom-animation fallback, and guarded eight-second lifecycle.
+- Mello spring physics with cursor-aware eyes and body lean, ten small behavior
+  variations, six muted palettes, reduced-motion support, and a different
+  deterministic five-action performance on each appearance. Cursor coordinates
+  are sampled only while Mello is visible and are never stored.
 - Work-area-aware nine-position placement and monitor selection with primary
   monitor fallback.
 - Strict local-only CSP and no updater/network dependencies.
@@ -36,7 +40,7 @@ build.
   expressions, external or embedded assets, images, text, fonts, audio, and
   excessive complexity or recursive precompositions. Import validation runs
   away from the settings UI. Both formats use atomic private storage, an
-  explicit selected-animation preview, corruption fallback, and reset.
+  explicit selected-animation preview, corruption fallback, and reset to Mello.
 - Live tray status showing remaining time, pause time, due state, or popup state.
 - Native Rust unit tests plus existing TypeScript tests.
 

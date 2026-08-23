@@ -102,6 +102,14 @@ pub struct PopupConfiguration {
     animation: custom_animation::ActiveAnimation,
 }
 
+#[derive(Debug, Clone, Copy, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CursorSample {
+    x: f64,
+    y: f64,
+    inside: bool,
+}
+
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct MonitorOption {
@@ -196,6 +204,41 @@ pub fn configuration(
         .map_err(|_| "popup state is unavailable".to_string())?
         .configuration(window.label())
         .ok_or_else(|| "this popup session is no longer active".to_string())
+}
+
+pub fn cursor_sample(window: &WebviewWindow) -> Result<CursorSample, String> {
+    let cursor = window
+        .cursor_position()
+        .map_err(|error| error.to_string())?;
+    let origin = window.outer_position().map_err(|error| error.to_string())?;
+    let size = window.inner_size().map_err(|error| error.to_string())?;
+    Ok(relative_cursor_sample(
+        cursor.x,
+        cursor.y,
+        f64::from(origin.x),
+        f64::from(origin.y),
+        f64::from(size.width),
+        f64::from(size.height),
+    ))
+}
+
+fn relative_cursor_sample(
+    cursor_x: f64,
+    cursor_y: f64,
+    origin_x: f64,
+    origin_y: f64,
+    width: f64,
+    height: f64,
+) -> CursorSample {
+    let safe_width = width.max(1.0);
+    let safe_height = height.max(1.0);
+    let x = (cursor_x - origin_x) / safe_width;
+    let y = (cursor_y - origin_y) / safe_height;
+    CursorSample {
+        x,
+        y,
+        inside: (0.0..=1.0).contains(&x) && (0.0..=1.0).contains(&y),
+    }
 }
 
 pub fn ready(app: &AppHandle, window: &WebviewWindow) -> Result<(), String> {
@@ -484,5 +527,18 @@ mod tests {
             .finish_id_in_phase("new", PopupPhase::Visible)
             .is_some());
         assert!(!lifecycle.is_busy());
+    }
+
+    #[test]
+    fn cursor_coordinates_are_relative_to_the_click_through_popup() {
+        let inside = relative_cursor_sample(250.0, 300.0, 100.0, 100.0, 300.0, 400.0);
+        assert!((inside.x - 0.5).abs() < f64::EPSILON);
+        assert!((inside.y - 0.5).abs() < f64::EPSILON);
+        assert!(inside.inside);
+
+        let outside = relative_cursor_sample(50.0, 50.0, 100.0, 100.0, 300.0, 400.0);
+        assert!(outside.x < 0.0);
+        assert!(outside.y < 0.0);
+        assert!(!outside.inside);
     }
 }

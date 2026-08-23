@@ -1,6 +1,6 @@
 [package]
 name = "standup"
-version = "2.1.1"
+version = "2.2.0"
 description = "A private, offline-first stand-up reminder."
 authors = ["ioiostudio"]
 license = "LicenseRef-Proprietary"

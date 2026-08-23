@@ -94,7 +94,7 @@ function renderSettings(settings: StandUpSettings): void {
     position.checked = true;
   }
   animationStatus.textContent = !settings.useCustomAnimation
-    ? 'Using the built-in StandUp animation'
+    ? 'Using Mello, the built-in interactive mascot'
     : settings.customAnimationFormat === 'lottie'
       ? 'Using your validated vector Lottie animation'
       : 'Using your sanitized custom GIF';
@@ -317,7 +317,7 @@ previewAnimationButton.addEventListener('click', async () => {
 resetAnimationButton.addEventListener('click', async () => {
   try {
     renderSettings(await standUpApi.resetCustomAnimation());
-    setSaving(false, 'Restored the built-in StandUp animation');
+    setSaving(false, 'Restored Mello, the built-in mascot');
   } catch (error) {
     setSaving(false, error instanceof Error ? error.message : String(error));
   }

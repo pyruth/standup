@@ -24,14 +24,16 @@ remote assets, HTTP client, localhost server, or runtime network calls.
 - Launch at login enabled by default
 - Tray/menu-bar controls for pause, resume, preview, settings, and quit
 - Fresh, always-on-top, non-focusable, click-through popup for every reminder,
-  shown only after its GIF or Lottie canvas is render-ready
+  shown only after its mascot, GIF, or Lottie canvas is render-ready
+- Mello, the built-in interactive jelly mascot, with spring-based squash,
+  stretch, wobble, bounce, puddle, facial reactions, six muted palettes, and a
+  varied five-action performance on every appearance
 - Nine reminder positions and automatic/specific monitor selection
 - Local creative prompt builder for making a custom GIF or vector Lottie JSON
   with any AI provider
 - Secure native animation picker with GIF sanitizing or strict vector-only
   Lottie validation, strict popup-sized complexity limits, background import,
-  private storage, selected-animation preview, and reset to the built-in
-  animation
+  private storage, selected-animation preview, and reset to Mello
 - Silent-by-default system beep, one-second soft chime, and two-second gentle
   chime with sound testing
 - Per-window Tauri capabilities and a strict local-only CSP
@@ -90,5 +92,8 @@ signing/notarization.
 
 Preferences are stored only in the operating system’s per-user application-data
 directory. Active-time progress remains in memory and resets after the app
-restarts. The default animation and Lottie renderer are packaged inside the
-application; custom animations never require a network connection.
+restarts. Mello is drawn locally by the application and the Lottie renderer is
+packaged inside it; custom animations never require a network connection.
+While Mello is visible, the app samples only the pointer's position relative to
+the reminder so its eyes and soft body can react. The samples are never stored,
+and the reminder remains click-through.

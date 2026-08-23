@@ -155,6 +155,11 @@ async fn choose_custom_animation(app: tauri::AppHandle) -> Result<Option<Setting
 }
 
 #[tauri::command]
+fn popup_cursor(window: WebviewWindow) -> Result<reminder::CursorSample, String> {
+    reminder::cursor_sample(&window)
+}
+
+#[tauri::command]
 fn reset_custom_animation(app: tauri::AppHandle) -> Result<Settings, String> {
     custom_animation::reset(&app)
 }
@@ -182,6 +187,7 @@ pub fn run() {
             resume_timer,
             preview_reminder,
             popup_configuration,
+            popup_cursor,
             popup_ready,
             popup_finished,
             popup_failed,
