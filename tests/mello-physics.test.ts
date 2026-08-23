@@ -4,9 +4,14 @@ import {
   MELLO_PALETTES,
   behaviorAt,
   choosePalette,
+  classifyMelloGesture,
   conservedScaleY,
   createBehaviorPlan,
+  elasticScale,
+  isPointInsideMello,
+  isPointInsideRotatedEllipse,
   normalizeCursor,
+  reactionForClick,
   stepSpring
 } from '../src/renderer/mello-physics.js';
 
@@ -56,11 +61,57 @@ describe('Mello mascot physics', () => {
     expect(names.size).toBe(MELLO_PALETTES.length);
   });
 
+  it('keeps the selected Mello color when color consistency is enabled', () => {
+    for (let seed = 0; seed < 25; seed += 1) {
+      expect(choosePalette(seed, 'periwinkle').name).toBe('periwinkle');
+      expect(choosePalette(seed, 'mint').name).toBe('mint');
+    }
+  });
+
   it('bounds global cursor samples before applying interaction physics', () => {
     expect(normalizeCursor({ x: -50, y: 20, inside: false })).toEqual({
       x: -1,
       y: 2,
       inside: false
     });
+  });
+
+  it('starts click motion only when the pointer lands on Mello', () => {
+    expect(isPointInsideMello(400, 310, 800, 500)).toBe(true);
+    expect(isPointInsideMello(40, 40, 800, 500)).toBe(false);
+    expect(isPointInsideMello(760, 460, 800, 500)).toBe(false);
+  });
+
+  it('stretches farther with pull and speed while conserving soft volume', () => {
+    expect(elasticScale(0, 0)).toEqual({ along: 1, across: 1 });
+    const slow = elasticScale(55, 120);
+    const fast = elasticScale(140, 1_900);
+    expect(slow.along).toBeGreaterThan(1);
+    expect(fast.along).toBeGreaterThan(slow.along);
+    expect(fast.along).toBeLessThanOrEqual(1.98);
+    expect(fast.across).toBeGreaterThanOrEqual(0.55);
+    expect(elasticScale(500, 5_000, true)).toEqual({ along: 1, across: 1 });
+  });
+
+  it('classifies clicks and vertical drag releases', () => {
+    expect(classifyMelloGesture(0.01, 2)).toBe('click');
+    expect(classifyMelloGesture(0.2, -0.6)).toBe('bounce-up');
+    expect(classifyMelloGesture(0.2, 0.6)).toBe('bounce-down');
+    expect(classifyMelloGesture(0.2, 0.1)).toBe('drag');
+  });
+
+  it('cycles through every approved click reaction', () => {
+    expect(
+      new Set(Array.from({ length: 3 }, (_, index) => reactionForClick(index, 7)))
+    ).toEqual(new Set(['punch', 'split', 'angry']));
+  });
+
+  it('hit-tests rotated, stretched Mello geometry', () => {
+    expect(
+      isPointInsideRotatedEllipse(50, 30, 50, 50, 48, 16, Math.PI / 4)
+    ).toBe(true);
+    expect(
+      isPointInsideRotatedEllipse(5, 5, 50, 50, 30, 12, Math.PI / 3)
+    ).toBe(false);
   });
 });

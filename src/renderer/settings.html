@@ -4,175 +4,154 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StandUp Settings</title>
+    <link rel="icon" href="./assets/app-icon.png" />
     <link rel="stylesheet" href="./settings.css" />
   </head>
   <body>
-    <main class="shell">
-      <header class="hero">
-        <img
-          class="brand-mark"
-          src="./assets/app-icon.png"
-          width="58"
-          height="58"
-          alt="StandUp app icon"
-        />
-        <div>
-          <p class="eyebrow">HEALTHY DESKTOP COMPANION</p>
-          <div class="brand-line">
-            <h1>Stand<span>Up</span></h1>
-            <p class="company-name">by ioiostudio</p>
+    <main class="app-shell">
+      <aside class="sidebar">
+        <div class="window-controls" aria-hidden="true"><span></span><span></span><span></span></div>
+        <div class="brand">
+          <img src="./assets/app-icon.png" width="74" height="74" alt="StandUp" />
+          <div><strong>StandUp</strong><span>ioiostudio</span></div>
+        </div>
+        <nav aria-label="Settings pages">
+          <button class="nav-item active" data-page="animation"><i class="ph ph-smiley"></i><span>Animation</span></button>
+          <button class="nav-item" data-page="general"><i class="ph ph-gear"></i><span>General</span></button>
+          <button class="nav-item" data-page="reminders"><i class="ph ph-bell"></i><span>Reminders</span></button>
+          <button class="nav-item" data-page="schedule"><i class="ph ph-calendar-blank"></i><span>Schedule</span></button>
+          <button class="nav-item" data-page="shortcuts"><i class="ph ph-keyboard"></i><span>Shortcuts</span></button>
+          <button class="nav-item" data-page="snooze"><i class="ph ph-moon"></i><span>Snooze &amp; DND</span></button>
+          <button class="nav-item" data-page="about"><i class="ph ph-info"></i><span>About</span></button>
+        </nav>
+        <div class="sidebar-footer"><span>ioiostudio</span><small>© 2026 ioiostudio</small></div>
+      </aside>
+
+      <section class="workspace">
+        <header class="workspace-header">
+          <div><h1 id="page-title">Animation</h1><p id="page-subtitle">Choose how Mello appears on your screen.</p></div>
+          <div class="theme-picker" role="radiogroup" aria-label="Appearance theme">
+            <button data-theme="system">System</button><button data-theme="light">Light</button><button data-theme="dark">Dark</button>
           </div>
-          <p class="subtitle">
-            A quiet, offline reminder to move throughout your active workday.
-          </p>
-        </div>
-      </header>
+        </header>
 
-      <section class="status-card" aria-live="polite">
-        <div>
-          <span class="status-dot"></span>
-          <span id="status-label">Starting…</span>
-        </div>
-        <button id="preview-button" class="secondary-button" type="button">
-          Preview reminder
-        </button>
-      </section>
-
-      <section class="card">
-        <div class="section-heading">
-          <p class="eyebrow">TIMING</p>
-          <h2>Your movement rhythm</h2>
-        </div>
-        <label class="field">
-          <span>
-            <strong>Remind me after</strong>
-            <small>Active keyboard and mouse time</small>
-          </span>
-          <select id="interval-select" aria-label="Reminder interval"></select>
-        </label>
-        <label class="field">
-          <span>
-            <strong>Consider me idle after</strong>
-            <small>The timer pauses when no input is detected</small>
-          </span>
-          <select id="idle-select" aria-label="Idle threshold"></select>
-        </label>
-        <label class="field toggle-field">
-          <span>
-            <strong>Launch at login</strong>
-            <small>Enabled by default and stored only on this device</small>
-          </span>
-          <input id="login-toggle" type="checkbox" role="switch" />
-        </label>
-      </section>
-
-      <section class="card">
-        <div class="section-heading">
-          <p class="eyebrow">APPEARANCE</p>
-          <h2>Where the reminder appears</h2>
-        </div>
-        <div class="field placement-field">
-          <span>
-            <strong>Screen position</strong>
-            <small>Choose one of nine positions</small>
-          </span>
-          <div
-            id="position-grid"
-            class="position-grid"
-            role="radiogroup"
-            aria-label="Reminder position"
-          ></div>
-        </div>
-        <label class="field">
-          <span>
-            <strong>Monitor</strong>
-            <small>Falls back to the primary display if disconnected</small>
-          </span>
-          <select id="monitor-select" aria-label="Reminder monitor"></select>
-        </label>
-        <div class="field">
-          <span>
-            <strong>Sound</strong>
-            <small>Silent by default; plays once with the reminder</small>
-          </span>
-          <div class="inline-control">
-            <select id="sound-select" aria-label="Reminder sound"></select>
-            <button
-              id="sound-preview-button"
-              class="secondary-button compact-button"
-              type="button"
-            >
-              Test
-            </button>
+        <div class="page active" data-page-panel="animation">
+          <div class="segmented visual-picker" role="radiogroup" aria-label="Reminder animation">
+            <button data-visual="mello">Mello mascot</button><button data-visual="original-gif">Original GIF</button>
           </div>
+          <section class="preview-card">
+            <div id="mello-preview" class="preview-stage">
+              <canvas id="mello-preview-canvas" width="700" height="360"></canvas>
+              <label class="speech" for="reminder-message">
+                <textarea id="reminder-message" maxlength="25" rows="2" aria-label="Reminder message">Stand up&#10;move a little</textarea>
+                <small id="message-count">22/25</small>
+              </label>
+            </div>
+            <div id="gif-preview" class="preview-stage" hidden><img src="./assets/standup-reminder.gif" alt="Original StandUp reminder" /></div>
+            <div class="appearance-controls" data-mello-only>
+              <div class="appearance-row">
+                <label class="inline-label"><span>Keep the same color</span><input id="same-color-toggle" type="checkbox" role="switch" /></label>
+                <div id="color-swatches" class="swatches" role="radiogroup" aria-label="Mello color"></div>
+              </div>
+              <div class="appearance-row">
+                <span class="inline-label">Message board color</span>
+                <div id="board-color-swatches" class="swatches" role="radiogroup" aria-label="Message board color"></div>
+              </div>
+            </div>
+          </section>
+          <section class="settings-list compact-list">
+            <label class="settings-row" data-mello-only><i class="ph ph-sparkle"></i><span><strong>Personality</strong><small>Choose how energetic Mello feels</small></span><select id="motion-style-select"><option value="calm">Calm</option><option value="playful">Playful</option></select></label>
+            <label class="settings-row" data-mello-only><i class="ph ph-cursor-click"></i><span><strong>Interactive Mello</strong><small>Click for reactions, or drag and bounce the jelly mascot</small></span><input id="pointer-toggle" type="checkbox" role="switch" /></label>
+            <label class="settings-row" data-mello-only><i class="ph ph-smiley-wink"></i><span><strong>Session mood</strong><small>Mello feels energetic after completed breaks and sleepy after missed ones</small></span><input id="session-mood-toggle" type="checkbox" role="switch" /></label>
+            <button id="preview-button" class="settings-row action-row" type="button"><i class="ph ph-eye"></i><span><strong>Preview reminder</strong><small>Uses your monitor, position, color, and sound</small></span><b>Preview reminder</b></button>
+          </section>
         </div>
-      </section>
 
-      <section class="card">
-        <div class="section-heading">
-          <p class="eyebrow">YOUR ANIMATION</p>
-          <h2>Bring your own creative idea</h2>
-          <p>
-            StandUp never contacts an AI provider. Add your idea, copy the
-            technical prompt, and use any provider you trust. Import first,
-            then use Preview selected when you are ready.
-          </p>
+        <div class="page" data-page-panel="general">
+          <section class="settings-list">
+            <label class="settings-row"><i class="ph ph-clock"></i><span><strong>Reminder interval</strong><small>Counts only while you are actively using the computer</small></span><select id="interval-select"></select></label>
+            <label class="settings-row"><i class="ph ph-hourglass"></i><span><strong>Idle detection</strong><small>Pauses counting when you step away</small></span><select id="idle-select"></select></label>
+            <label class="settings-row"><i class="ph ph-power"></i><span><strong>Launch at login</strong><small>Start quietly when your computer turns on</small></span><input id="login-toggle" type="checkbox" role="switch" /></label>
+            <label class="settings-row"><i class="ph ph-person-simple"></i><span><strong>Follow Reduce Motion</strong><small>Respect your operating system accessibility preference</small></span><input id="reduce-motion-toggle" type="checkbox" role="switch" /></label>
+            <label class="settings-row"><i class="ph ph-check-circle"></i><span><strong>Mello Break Check</strong><small>Celebrate when you return after stepping away for at least 45 seconds</small></span><input id="break-check-toggle" type="checkbox" role="switch" /></label>
+          </section>
+          <section class="status-panel" aria-live="polite"><span class="status-dot"></span><div><strong id="status-label">Starting…</strong><small>StandUp stores progress only for this session.</small></div></section>
         </div>
-        <label class="stacked-field">
-          <strong>Your creative direction</strong>
-          <textarea
-            id="creativity-input"
-            rows="3"
-            maxlength="1200"
-            placeholder="Describe any character, visual style, colors, message, or movement you want…"
-          ></textarea>
-        </label>
-        <div class="prompt-actions">
-          <button
-            id="upload-animation-button"
-            class="primary-button"
-            type="button"
-          >
-            Choose GIF or Lottie
-          </button>
-          <button
-            id="preview-animation-button"
-            class="secondary-button"
-            type="button"
-          >
-            Preview selected
-          </button>
-          <button id="copy-prompt-button" class="primary-button" type="button">
-            Copy AI prompt
-          </button>
-          <button
-            id="reset-animation-button"
-            class="secondary-button"
-            type="button"
-          >
-            Reset to Mello
-          </button>
-        </div>
-        <textarea
-          id="prompt-preview"
-          class="prompt-preview"
-          readonly
-          aria-label="Generated technical prompt"
-        ></textarea>
-        <p id="animation-status" class="privacy-note"></p>
-        <p class="privacy-note">
-          Only import animations you own or have permission to use. GIFs are
-          decoded and sanitized. Lottie JSON is limited to vector shapes and
-          checked for expressions, external files, text, fonts, audio, and
-          unsafe complexity. StandUp stores a private copy and works offline.
-        </p>
-      </section>
 
-      <footer>
-        <span>© 2026 ioiostudio · Private by design</span>
-        <span id="save-state">Settings saved automatically</span>
-      </footer>
+        <div class="page" data-page-panel="reminders">
+          <section class="settings-list">
+            <div class="settings-row"><i class="ph ph-speaker-high"></i><span><strong>Sound</strong><small>Silent by default; plays once with the reminder</small></span><div class="inline-control"><select id="sound-select"></select><button id="sound-preview-button" class="icon-button" title="Test sound"><i class="ph ph-play"></i></button></div></div>
+            <label class="settings-row"><i class="ph ph-monitor"></i><span><strong>Monitor</strong><small>Falls back to the primary display if disconnected</small></span><select id="monitor-select"></select></label>
+            <div class="settings-row position-row"><i class="ph ph-grid-nine"></i><span><strong>Position</strong><small>Choose one of nine screen locations</small></span><div id="position-grid" class="position-grid" role="radiogroup"></div></div>
+            <label class="settings-row"><i class="ph ph-arrows-out"></i><span><strong>Fullscreen protection</strong><small>Wait until presentations, videos, or games finish</small></span><input id="fullscreen-toggle" type="checkbox" role="switch" /></label>
+            <label class="settings-row"><i class="ph ph-eye"></i><span><strong>Mello Peek</strong><small>A silent heads-up one minute before your stand reminder</small></span><input id="peek-toggle" type="checkbox" role="switch" /></label>
+            <label class="settings-row"><i class="ph ph-person-simple-run"></i><span><strong>Mello Moves</strong><small>Show a short, comfortable movement idea using only built-in offline prompts</small></span><input id="moves-toggle" type="checkbox" role="switch" /></label>
+            <div class="settings-row category-row"><i class="ph ph-list-checks"></i><span><strong>Move categories</strong><small>Choose at least one</small></span><div id="move-categories" class="choice-chips" role="group"><button data-move-category="mobility">Mobility</button><button data-move-category="eyes">Eyes</button><button data-move-category="hydration">Water</button><button data-move-category="walk">Walk</button></div></div>
+            <label class="settings-row"><i class="ph ph-lightning"></i><span><strong>Microbreak rhythm</strong><small>Optional tiny prompts between stand reminders</small></span><input id="microbreak-toggle" type="checkbox" role="switch" /></label>
+            <label class="settings-row" id="microbreak-interval-row"><i class="ph ph-timer"></i><span><strong>Microbreak timing</strong><small>Uses the same active-time and DND rules</small></span><select id="microbreak-interval-select"></select></label>
+          </section>
+          <button id="reminders-preview-button" class="primary-action" type="button"><i class="ph ph-eye"></i> Preview setup</button>
+        </div>
+
+        <div class="page" data-page-panel="schedule">
+          <section class="settings-list schedule-list">
+            <label class="settings-row"><i class="ph ph-calendar-check"></i><span><strong>Weekly schedule</strong><small>Count active time only during the days and hours you choose</small></span><input id="schedule-toggle" type="checkbox" role="switch" /></label>
+            <div class="settings-row schedule-days-row"><i class="ph ph-calendar-dots"></i><span><strong>Active days</strong><small>At least one day must remain selected</small></span><div id="schedule-days" class="schedule-days" role="group" aria-label="Active schedule days"></div></div>
+            <label class="settings-row"><i class="ph ph-sun-horizon"></i><span><strong>Starts at</strong><small>Uses your computer’s local time</small></span><input id="schedule-start-time" class="time-control" type="time" step="300" /></label>
+            <label class="settings-row"><i class="ph ph-moon-stars"></i><span><strong>Ends at</strong><small>An earlier end time creates an overnight schedule</small></span><input id="schedule-end-time" class="time-control" type="time" step="300" /></label>
+          </section>
+          <section class="status-panel schedule-status" aria-live="polite"><span class="status-dot"></span><div><strong id="schedule-summary">Always active</strong><small id="schedule-detail">Scheduling is off, so active time can count every day.</small></div></section>
+          <p class="page-note">Progress is preserved outside scheduled hours. If a reminder is already due, it appears when the next active period begins. Preview Reminder always works.</p>
+        </div>
+
+        <div class="page" data-page-panel="snooze">
+          <section class="settings-list">
+            <button class="settings-row snooze-action" data-snooze="30"><i class="ph ph-clock-countdown"></i><span><strong>Pause for 30 minutes</strong><small>Resume automatically afterward</small></span><i class="ph ph-caret-right"></i></button>
+            <button class="settings-row snooze-action" data-snooze="60"><i class="ph ph-coffee"></i><span><strong>Pause for 1 hour</strong><small>Useful for lunch or a meeting</small></span><i class="ph ph-caret-right"></i></button>
+            <button class="settings-row snooze-action" data-snooze="120"><i class="ph ph-clock-clockwise"></i><span><strong>Pause for 2 hours</strong><small>For a longer focus session</small></span><i class="ph ph-caret-right"></i></button>
+            <button class="settings-row snooze-action" data-pause-until="tomorrow"><i class="ph ph-sun-horizon"></i><span><strong>Pause until tomorrow</strong><small>Resume automatically tomorrow at 8:00 AM</small></span><i class="ph ph-caret-right"></i></button>
+            <button class="settings-row snooze-action" data-pause-until="next-schedule"><i class="ph ph-calendar-check"></i><span><strong>Pause until next schedule</strong><small>Resume at the next active period</small></span><i class="ph ph-caret-right"></i></button>
+            <button id="resume-button" class="settings-row"><i class="ph ph-play-circle"></i><span><strong>Resume reminders</strong><small>Continue from a fresh active interval</small></span><i class="ph ph-caret-right"></i></button>
+            <label class="settings-row"><i class="ph ph-arrows-out"></i><span><strong>Suppress in fullscreen</strong><small>Show a pending reminder after fullscreen closes</small></span><input id="dnd-fullscreen-toggle" type="checkbox" role="switch" /></label>
+          </section>
+        </div>
+
+        <div class="page" data-page-panel="shortcuts">
+          <section class="settings-list shortcut-list">
+            <label class="settings-row"><i class="ph ph-pause"></i><span><strong>Pause or resume</strong><small>Pauses for 30 minutes when reminders are active</small></span><input id="shortcut-toggle-pause" class="shortcut-input" placeholder="Not set" /></label>
+            <label class="settings-row"><i class="ph ph-eye"></i><span><strong>Preview reminder</strong><small>Show the complete reminder from anywhere</small></span><input id="shortcut-preview" class="shortcut-input" placeholder="Not set" /></label>
+            <label class="settings-row"><i class="ph ph-clock-countdown"></i><span><strong>Snooze 30 minutes</strong><small>Quickly protect a focus session</small></span><input id="shortcut-snooze" class="shortcut-input" placeholder="Not set" /></label>
+            <div class="settings-row"><i class="ph ph-gear"></i><span><strong>Open settings</strong><small>Click the StandUp tray icon</small></span><kbd>Tray click</kbd></div>
+          </section>
+          <p class="page-note">Use combinations such as Ctrl+Shift+P on Windows or Command+Shift+P on macOS. Leave a field empty to disable it. StandUp checks for invalid or unavailable combinations before saving.</p>
+        </div>
+
+        <div class="page" data-page-panel="about">
+          <section class="about-hero"><img src="./assets/app-icon.png" alt="" /><div><h2>StandUp</h2><p>Version 3.1.0 · Made by ioiostudio</p></div></section>
+          <section class="settings-list">
+            <div class="settings-row"><i class="ph ph-wifi-slash"></i><span><strong>Works offline</strong><small>No account or internet connection required</small></span><i class="ph ph-check-circle success"></i></div>
+            <div class="settings-row"><i class="ph ph-shield-check"></i><span><strong>Private by design</strong><small>No analytics, activity history, or network calls</small></span><i class="ph ph-check-circle success"></i></div>
+            <div class="settings-row"><i class="ph ph-buildings"></i><span><strong>Created by</strong><small>ioiostudio</small></span><b>ioiostudio</b></div>
+          </section>
+        </div>
+
+        <footer><span id="save-state">Settings saved automatically</span><span>Private by design</span></footer>
+      </section>
     </main>
+    <section id="onboarding" class="onboarding" hidden aria-labelledby="onboarding-title">
+      <div class="onboarding-card">
+        <img src="./assets/app-icon.png" width="84" height="84" alt="" />
+        <div><span class="eyebrow">WELCOME TO STANDUP 3.1</span><h2 id="onboarding-title">Set your healthy rhythm</h2><p>Five quick choices. Everything stays private and offline.</p></div>
+        <div class="onboarding-grid">
+          <label><span>Stand reminder</span><select id="onboarding-interval"></select></label>
+          <label><span>Weekly schedule</span><select id="onboarding-schedule"><option value="off">Any time</option><option value="workweek">Weekdays · 9 to 6</option></select></label>
+          <label><span>Sound</span><select id="onboarding-sound"></select></label>
+          <label><span>Monitor</span><select id="onboarding-monitor"></select></label>
+          <label><span>Mello color</span><select id="onboarding-color"><option value="periwinkle">Periwinkle</option><option value="mint">Mint</option><option value="coral">Coral</option><option value="apricot">Apricot</option><option value="blueberry">Blueberry</option><option value="grape">Grape</option></select></label>
+        </div>
+        <div class="onboarding-actions"><button id="onboarding-skip" class="secondary-action">Use defaults</button><button id="onboarding-finish" class="primary-action">Start with Mello</button></div>
+      </div>
+    </section>
     <script type="module" src="./settings.ts"></script>
   </body>
 </html>

@@ -35,7 +35,7 @@ const tauriConfig = JSON.parse(
   };
 };
 
-describe('Tauri v2 release packaging configuration', () => {
+describe('Tauri v3 release packaging configuration', () => {
   it('builds only the requested Windows x64 and Apple Silicon artifacts', () => {
     expect(packageJson.scripts['dist:win']).toContain(
       '--target x86_64-pc-windows-msvc'
@@ -59,8 +59,19 @@ describe('Tauri v2 release packaging configuration', () => {
     );
   });
 
-  it('pins the offline Lottie renderer dependency', () => {
-    expect(packageJson.dependencies['lottie-web']).toBe('5.13.0');
+  it('ships only bundled reminder visuals without an animation runtime', () => {
+    expect(packageJson.dependencies['lottie-web']).toBeUndefined();
+
+    const popupSource = fs.readFileSync(
+      path.join(projectRoot, 'src', 'renderer', 'popup.ts'),
+      'utf8'
+    );
+    const reminderSource = fs.readFileSync(
+      path.join(projectRoot, 'src-tauri', 'src', 'reminder.rs'),
+      'utf8'
+    );
+    expect(popupSource).toContain("standup-reminder.gif?url");
+    expect(reminderSource).not.toContain('./assets/standup-reminder.gif');
   });
 
   it('uses explicit per-window capabilities', () => {
@@ -119,5 +130,26 @@ describe('Tauri v2 release packaging configuration', () => {
     expect(rustEntryPoint).toContain(
       '#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]'
     );
+  });
+
+  it('keeps Windows packaging and gates notarized macOS releases on secrets', () => {
+    const workflow = fs.readFileSync(
+      path.join(projectRoot, '.github', 'workflows', 'build.yml'),
+      'utf8'
+    );
+
+    expect(workflow).toContain('name: Package Windows x64');
+    expect(workflow).toContain('name: Package macOS Apple Silicon');
+    expect(workflow).toContain('environment: apple');
+    expect(workflow).toContain(
+      'APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}'
+    );
+    expect(workflow).toContain(
+      'APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}'
+    );
+    expect(workflow).toContain('Verify signed and notarized application');
+    expect(workflow).toContain('Build signed and notarized DMG');
+    expect(workflow).toContain('Build validation DMG');
+    expect(workflow).toContain('APPLE_SIGNING_IDENTITY=-');
   });
 });

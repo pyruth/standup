@@ -22,6 +22,9 @@ pub fn create(app: &App) -> tauri::Result<()> {
         .separator()
         .text("pause-30", "Pause for 30 minutes")
         .text("pause-60", "Pause for 1 hour")
+        .text("pause-120", "Pause for 2 hours")
+        .text("pause-tomorrow", "Pause until tomorrow")
+        .text("pause-schedule", "Pause until next scheduled period")
         .text("resume", "Resume")
         .separator()
         .text("preview", "Preview Reminder")
@@ -39,6 +42,13 @@ pub fn create(app: &App) -> tauri::Result<()> {
             match event.id().as_ref() {
                 "pause-30" => pause(app, 30),
                 "pause-60" => pause(app, 60),
+                "pause-120" => pause(app, 120),
+                "pause-tomorrow" => {
+                    let _ = crate::pause_until_mode(&app.state::<AppState>(), "tomorrow");
+                }
+                "pause-schedule" => {
+                    let _ = crate::pause_until_mode(&app.state::<AppState>(), "next-schedule");
+                }
                 "resume" => {
                     if let Ok(mut timer) = app.state::<AppState>().timer.lock() {
                         timer.resume(now_ms());
@@ -77,7 +87,7 @@ pub fn create(app: &App) -> tauri::Result<()> {
 
 fn start_status_updates(app: tauri::AppHandle, status: MenuItem<tauri::Wry>) {
     thread::spawn(move || loop {
-        thread::sleep(Duration::from_secs(5));
+        thread::sleep(Duration::from_secs(1));
         let _ = status.set_text(status_label(&app));
     });
 }
@@ -110,6 +120,21 @@ fn status_label(app: &tauri::AppHandle) -> String {
             .saturating_sub(now_ms());
         return format!("Paused - {}", format_duration(remaining));
     }
+    if status.schedule_blocked {
+        return "Outside scheduled hours - progress preserved".into();
+    }
+    if status.microbreak_pending {
+        return "Microbreak due - waiting for a suitable moment".into();
+    }
+    if status.microbreak_enabled
+        && status.microbreak_remaining_milliseconds < status.remaining_milliseconds
+    {
+        return format!(
+            "Next microbreak - {} · stand - {}",
+            format_duration(status.microbreak_remaining_milliseconds),
+            format_duration(status.remaining_milliseconds)
+        );
+    }
     format!(
         "Next reminder - {}",
         format_duration(status.remaining_milliseconds)
@@ -120,18 +145,17 @@ fn format_duration(milliseconds: u64) -> String {
     if milliseconds == 0 {
         return "due now".into();
     }
-    let total_minutes = milliseconds.div_ceil(60_000);
-    if total_minutes < 60 {
-        return format!(
-            "{} {}",
-            total_minutes,
-            if total_minutes == 1 {
-                "minute"
-            } else {
-                "minutes"
-            }
-        );
+    let total_seconds = milliseconds.div_ceil(1_000);
+    if total_seconds < 3_600 {
+        let minutes = total_seconds / 60;
+        let seconds = total_seconds % 60;
+        return if minutes == 0 {
+            format!("{seconds}s")
+        } else {
+            format!("{minutes}m {seconds:02}s")
+        };
     }
+    let total_minutes = total_seconds.div_ceil(60);
     let hours = total_minutes / 60;
     let minutes = total_minutes % 60;
     if minutes == 0 {
@@ -167,8 +191,8 @@ mod tests {
 
     #[test]
     fn formats_tray_durations_for_minutes_and_hours() {
-        assert_eq!(format_duration(1), "1 minute");
-        assert_eq!(format_duration(45 * 60_000), "45 minutes");
+        assert_eq!(format_duration(1), "1s");
+        assert_eq!(format_duration(45 * 60_000), "45m 00s");
         assert_eq!(format_duration(60 * 60_000), "1 hour");
         assert_eq!(format_duration(90 * 60_000), "1h 30m");
     }

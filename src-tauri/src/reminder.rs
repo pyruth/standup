@@ -1,8 +1,10 @@
 use crate::{
-    custom_animation,
-    settings::{ReminderPosition, Settings},
+    settings::{
+        MelloBoardColor, MelloColor, MelloMotionStyle, ReminderPosition, ReminderVisual, Settings,
+    },
     sound,
     state::AppState,
+    wellness::SessionMood,
 };
 use serde::Serialize;
 use std::{thread, time::Duration};
@@ -12,11 +14,12 @@ use tauri::{
 };
 use uuid::Uuid;
 
-const POPUP_WIDTH: f64 = 272.0;
-const POPUP_HEIGHT: f64 = 384.0;
+const POPUP_WIDTH: f64 = 640.0;
+const POPUP_HEIGHT: f64 = 520.0;
 const EDGE_MARGIN: f64 = 24.0;
 const PREPARING_TIMEOUT: Duration = Duration::from_secs(8);
-const VISIBLE_TIMEOUT: Duration = Duration::from_secs(9);
+const DEFAULT_VISIBLE_MS: u64 = 8_000;
+const INTERACTION_TIMEOUT: Duration = Duration::from_secs(120);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PopupPhase {
@@ -29,9 +32,20 @@ struct PopupSession {
     id: String,
     label: String,
     phase: PopupPhase,
-    preview: bool,
+    purpose: ReminderPurpose,
     position: ReminderPosition,
-    animation: custom_animation::ActiveAnimation,
+    animation: ReminderAnimation,
+    mello_motion_style: MelloMotionStyle,
+    mello_reacts_to_pointer: bool,
+    mello_keep_same_color: bool,
+    mello_color: MelloColor,
+    reminder_message: String,
+    move_prompt: Option<String>,
+    session_mood: SessionMood,
+    mello_board_color: MelloBoardColor,
+    follow_system_reduced_motion: bool,
+    deadline_ms: u64,
+    duration_ms: u64,
 }
 
 #[derive(Debug, Default)]
@@ -58,6 +72,17 @@ impl PopupLifecycle {
         Some(PopupConfiguration {
             position: session.position,
             animation: session.animation.clone(),
+            mello_motion_style: session.mello_motion_style,
+            mello_reacts_to_pointer: session.mello_reacts_to_pointer,
+            mello_keep_same_color: session.mello_keep_same_color,
+            mello_color: session.mello_color,
+            reminder_message: session.reminder_message.clone(),
+            move_prompt: session.move_prompt.clone(),
+            purpose: session.purpose,
+            session_mood: session.session_mood,
+            duration_milliseconds: session.duration_ms,
+            mello_board_color: session.mello_board_color,
+            follow_system_reduced_motion: session.follow_system_reduced_motion,
         })
     }
 
@@ -67,7 +92,31 @@ impl PopupLifecycle {
             return None;
         }
         session.phase = PopupPhase::Visible;
+        session.deadline_ms = now_ms() + session.duration_ms + 2_000;
         Some(session.clone())
+    }
+
+    fn set_interacting(&mut self, label: &str, active: bool) -> bool {
+        let Some(session) = self.current.as_mut() else {
+            return false;
+        };
+        if session.label != label || session.phase != PopupPhase::Visible {
+            return false;
+        }
+        let timeout = if active {
+            INTERACTION_TIMEOUT
+        } else {
+            Duration::from_millis(session.duration_ms + 2_000)
+        };
+        session.deadline_ms = now_ms() + timeout.as_millis() as u64;
+        true
+    }
+
+    fn visible_deadline(&self, id: &str) -> Option<u64> {
+        self.current.as_ref().and_then(|session| {
+            (session.id == id && session.phase == PopupPhase::Visible)
+                .then_some(session.deadline_ms)
+        })
     }
 
     fn finish_label(&mut self, label: &str) -> Option<PopupSession> {
@@ -99,7 +148,35 @@ impl PopupLifecycle {
 #[serde(rename_all = "camelCase")]
 pub struct PopupConfiguration {
     position: ReminderPosition,
-    animation: custom_animation::ActiveAnimation,
+    animation: ReminderAnimation,
+    mello_motion_style: MelloMotionStyle,
+    mello_reacts_to_pointer: bool,
+    mello_keep_same_color: bool,
+    mello_color: MelloColor,
+    reminder_message: String,
+    move_prompt: Option<String>,
+    purpose: ReminderPurpose,
+    session_mood: SessionMood,
+    duration_milliseconds: u64,
+    mello_board_color: MelloBoardColor,
+    follow_system_reduced_motion: bool,
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum ReminderAnimation {
+    Mello,
+    OriginalGif,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum ReminderPurpose {
+    Stand,
+    Preview,
+    Peek,
+    Microbreak,
+    Celebration,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
@@ -145,6 +222,17 @@ fn create_popup(app: &AppHandle, label: &str) -> tauri::Result<WebviewWindow> {
 }
 
 pub fn show(app: &AppHandle, preview: bool) -> Result<(), String> {
+    show_kind(
+        app,
+        if preview {
+            ReminderPurpose::Preview
+        } else {
+            ReminderPurpose::Stand
+        },
+    )
+}
+
+pub fn show_kind(app: &AppHandle, purpose: ReminderPurpose) -> Result<(), String> {
     let state = app.state::<AppState>();
     let settings = state
         .settings
@@ -153,13 +241,65 @@ pub fn show(app: &AppHandle, preview: bool) -> Result<(), String> {
         .get();
     let id = Uuid::new_v4().simple().to_string();
     let label = format!("reminder-{id}");
+    let (reminder_message, duration_ms) = match purpose {
+        ReminderPurpose::Stand | ReminderPurpose::Preview => {
+            (settings.reminder_message.clone(), DEFAULT_VISIBLE_MS)
+        }
+        ReminderPurpose::Peek => ("Break in one minute".into(), 3_500),
+        ReminderPurpose::Microbreak => ("Tiny movement break".into(), 6_000),
+        ReminderPurpose::Celebration => ("Nice break!".into(), 4_500),
+    };
+    let contextual = matches!(
+        purpose,
+        ReminderPurpose::Peek | ReminderPurpose::Microbreak | ReminderPurpose::Celebration
+    );
+    let (move_prompt, session_mood) = state
+        .wellness
+        .lock()
+        .map(|mut wellness| {
+            let prompt = if settings.mello_moves_enabled
+                && matches!(
+                    purpose,
+                    ReminderPurpose::Stand | ReminderPurpose::Microbreak
+                ) {
+                wellness
+                    .next_move(&settings.mello_move_categories)
+                    .map(str::to_string)
+            } else {
+                None
+            };
+            (prompt, wellness.mood(settings.session_mood_enabled))
+        })
+        .unwrap_or((None, SessionMood::Neutral));
     let session = PopupSession {
         id: id.clone(),
         label: label.clone(),
         phase: PopupPhase::Preparing,
-        preview,
+        purpose,
         position: settings.reminder_position,
-        animation: custom_animation::active(app, &settings),
+        animation: match if contextual {
+            ReminderVisual::Mello
+        } else {
+            settings.reminder_visual
+        } {
+            ReminderVisual::Mello => ReminderAnimation::Mello,
+            ReminderVisual::OriginalGif => ReminderAnimation::OriginalGif,
+        },
+        mello_motion_style: settings.mello_motion_style,
+        mello_reacts_to_pointer: settings.mello_reacts_to_pointer
+            && !matches!(
+                purpose,
+                ReminderPurpose::Peek | ReminderPurpose::Celebration
+            ),
+        mello_keep_same_color: settings.mello_keep_same_color,
+        mello_color: settings.mello_color,
+        reminder_message,
+        move_prompt,
+        session_mood,
+        mello_board_color: settings.mello_board_color,
+        follow_system_reduced_motion: settings.follow_system_reduced_motion,
+        deadline_ms: 0,
+        duration_ms,
     };
 
     let replaced = {
@@ -222,6 +362,48 @@ pub fn cursor_sample(window: &WebviewWindow) -> Result<CursorSample, String> {
     ))
 }
 
+pub fn set_cursor_capture(
+    window: &WebviewWindow,
+    state: &AppState,
+    enabled: bool,
+) -> Result<(), String> {
+    let allowed = state
+        .popup
+        .lock()
+        .map_err(|_| "popup state is unavailable".to_string())?
+        .current
+        .as_ref()
+        .is_some_and(|session| {
+            session.label == window.label()
+                && session.phase == PopupPhase::Visible
+                && session.mello_reacts_to_pointer
+                && matches!(session.animation, ReminderAnimation::Mello)
+        });
+    if enabled && !allowed {
+        return Err("cursor capture is unavailable for this popup".into());
+    }
+    window
+        .set_ignore_cursor_events(!enabled)
+        .map_err(|error| error.to_string())
+}
+
+pub fn set_interacting(
+    window: &WebviewWindow,
+    state: &AppState,
+    active: bool,
+) -> Result<(), String> {
+    if state
+        .popup
+        .lock()
+        .map_err(|_| "popup state is unavailable".to_string())?
+        .set_interacting(window.label(), active)
+    {
+        Ok(())
+    } else {
+        Err("this popup session is no longer visible".into())
+    }
+}
+
 fn relative_cursor_sample(
     cursor_x: f64,
     cursor_y: f64,
@@ -276,14 +458,32 @@ pub fn ready(app: &AppHandle, window: &WebviewWindow) -> Result<(), String> {
         })?;
 
     start_visible_watchdog(app.clone(), session.id.clone());
-    let _ = sound::play(app, reminder_sound);
+    if matches!(
+        session.purpose,
+        ReminderPurpose::Stand | ReminderPurpose::Preview | ReminderPurpose::Microbreak
+    ) {
+        let _ = sound::play(app, reminder_sound);
+    }
 
-    if !session.preview {
+    let shown_at = now_ms();
+    if session.purpose == ReminderPurpose::Stand {
         if let Ok(mut timer) = state.timer.lock() {
-            timer.mark_reminder_shown(now_ms());
+            timer.mark_reminder_shown(shown_at);
         } else {
             clear_session_by_label(app, window.label());
             return Err("timer state is unavailable".into());
+        }
+        let break_check_enabled = state
+            .settings
+            .lock()
+            .map(|store| store.get().break_check_enabled)
+            .unwrap_or(false);
+        if let Ok(mut wellness) = state.wellness.lock() {
+            wellness.reminder_shown(shown_at, break_check_enabled);
+        }
+    } else if session.purpose == ReminderPurpose::Microbreak {
+        if let Ok(mut timer) = state.timer.lock() {
+            timer.mark_microbreak_shown(shown_at);
         }
     }
 
@@ -302,9 +502,21 @@ fn start_preparing_watchdog(app: AppHandle, id: String) {
 }
 
 fn start_visible_watchdog(app: AppHandle, id: String) {
-    thread::spawn(move || {
-        thread::sleep(VISIBLE_TIMEOUT);
-        clear_session_by_id_and_phase(&app, &id, PopupPhase::Visible);
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_millis(250));
+        let deadline = app
+            .state::<AppState>()
+            .popup
+            .lock()
+            .ok()
+            .and_then(|lifecycle| lifecycle.visible_deadline(&id));
+        let Some(deadline) = deadline else {
+            break;
+        };
+        if now_ms() >= deadline {
+            clear_session_by_id_and_phase(&app, &id, PopupPhase::Visible);
+            break;
+        }
     });
 }
 
@@ -476,9 +688,24 @@ mod tests {
             id: id.into(),
             label: format!("reminder-{id}"),
             phase,
-            preview: true,
+            purpose: ReminderPurpose::Preview,
             position: ReminderPosition::BottomRight,
-            animation: custom_animation::ActiveAnimation::Default,
+            animation: ReminderAnimation::Mello,
+            mello_motion_style: MelloMotionStyle::Playful,
+            mello_reacts_to_pointer: true,
+            mello_keep_same_color: true,
+            mello_color: MelloColor::Periwinkle,
+            reminder_message: "Stand up\nmove a little".into(),
+            move_prompt: None,
+            session_mood: SessionMood::Neutral,
+            mello_board_color: MelloBoardColor::Cream,
+            follow_system_reduced_motion: true,
+            deadline_ms: if phase == PopupPhase::Visible {
+                now_ms() + DEFAULT_VISIBLE_MS + 2_000
+            } else {
+                0
+            },
+            duration_ms: DEFAULT_VISIBLE_MS,
         }
     }
 
@@ -540,5 +767,19 @@ mod tests {
         assert!(outside.x < 0.0);
         assert!(outside.y < 0.0);
         assert!(!outside.inside);
+    }
+
+    #[test]
+    fn interaction_extends_and_release_restores_the_watchdog_deadline() {
+        let mut lifecycle = PopupLifecycle {
+            current: Some(popup_session("current", PopupPhase::Visible)),
+        };
+        let ordinary = lifecycle.visible_deadline("current").unwrap();
+        assert!(lifecycle.set_interacting("reminder-current", true));
+        let interacting = lifecycle.visible_deadline("current").unwrap();
+        assert!(interacting > ordinary);
+        assert!(lifecycle.set_interacting("reminder-current", false));
+        let released = lifecycle.visible_deadline("current").unwrap();
+        assert!(released < interacting);
     }
 }

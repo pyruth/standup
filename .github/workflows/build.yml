@@ -1,84 +1,260 @@
-name: Build StandUp v2
+name: StandUp 3.1 CI and installers
 
 on:
   push:
     branches:
-      - main
       - v2
+      - v3
+      - codex/v3-redesign
     tags:
       - "v*"
   pull_request:
+    branches:
+      - v2
+      - v3
   workflow_dispatch:
+    inputs:
+      signed_macos:
+        description: Sign and notarize the Apple Silicon DMG
+        required: true
+        default: true
+        type: boolean
+
+concurrency:
+  group: standup-build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/v') }}
 
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   verify:
-    name: Verify web and Rust
+    name: Verify ${{ matrix.label }}
+    timeout-minutes: 35
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+            label: Windows x64
           - os: macos-26
             target: aarch64-apple-darwin
+            label: macOS Apple Silicon
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+
       - name: Select stable Rust
-        shell: bash
         run: |
-          rustup update stable
+          rustup set profile minimal
+          rustup update stable --no-self-update
           rustup default stable
           rustup target add "${{ matrix.target }}"
+
+      - name: Confirm native runner architecture
+        if: runner.os == 'macOS'
+        run: test "$(uname -m)" = "arm64"
+
       - run: npm ci
       - run: npm test
       - run: npm run typecheck
       - run: npm run build:web
-      - run: cargo test --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
+      - run: cargo test --locked --manifest-path src-tauri/Cargo.toml --target "${{ matrix.target }}"
 
-  package:
-    name: Package ${{ matrix.name }}
+      - name: Validate release tag matches application version
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          node --input-type=module -e '
+            import packageJson from "./package.json" with { type: "json" };
+            const expected = `v${packageJson.version}`;
+            if (process.env.RELEASE_TAG !== expected) {
+              console.error(`Release tag ${process.env.RELEASE_TAG} does not match ${expected}`);
+              process.exit(1);
+            }
+          '
+
+  package-windows:
+    name: Package Windows x64
     needs: verify
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - name: Windows-x64
-            os: windows-latest
-            target: x86_64-pc-windows-msvc
-            command: npm run dist:win
-            artifact: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
-          - name: macOS-Apple-Silicon
-            os: macos-26
-            target: aarch64-apple-darwin
-            command: npm run dist:mac
-            artifact: src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
-    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
+
       - name: Select stable Rust
-        shell: bash
         run: |
-          rustup update stable
+          rustup set profile minimal
+          rustup update stable --no-self-update
           rustup default stable
-          rustup target add "${{ matrix.target }}"
+          rustup target add x86_64-pc-windows-msvc
+
       - run: npm ci
-      - run: ${{ matrix.command }}
-        env:
-          APPLE_SIGNING_IDENTITY: "-"
+      - run: npm run dist:win
+
+      - name: Create Windows checksum
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem -LiteralPath "src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis" -Filter "*.exe" | Select-Object -First 1
+          if (-not $installer) { throw "Windows installer was not produced" }
+          $hash = (Get-FileHash -LiteralPath $installer.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $($installer.Name)" | Set-Content -LiteralPath "$($installer.FullName).sha256" -Encoding ascii
+
       - uses: actions/upload-artifact@v4
         with:
-          name: StandUp-${{ matrix.name }}
-          path: ${{ matrix.artifact }}
+          name: StandUp-Windows-x64
+          path: |
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
+            src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.sha256
           if-no-files-found: error
+          retention-days: 30
+
+  package-macos:
+    name: Package macOS Apple Silicon
+    needs: verify
+    timeout-minutes: 50
+    runs-on: macos-26
+    environment: apple
+    env:
+      SIGNED_BUILD: ${{ startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.signed_macos) }}
+      APPLE_CREDENTIALS_CONFIGURED: ${{ secrets.APPLE_CERTIFICATE != '' && secrets.APPLE_CERTIFICATE_PASSWORD != '' && secrets.KEYCHAIN_PASSWORD != '' && secrets.APPLE_API_ISSUER != '' && secrets.APPLE_API_KEY != '' && secrets.APPLE_API_KEY_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Select stable Rust
+        run: |
+          rustup set profile minimal
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup target add aarch64-apple-darwin
+
+      - name: Confirm Apple Silicon runner
+        run: test "$(uname -m)" = "arm64"
+
+      - run: npm ci
+
+      - name: Require Apple credentials for signed builds
+        if: env.SIGNED_BUILD == 'true' && env.APPLE_CREDENTIALS_CONFIGURED != 'true'
+        run: |
+          echo "A signed macOS build was requested, but one or more Apple secrets are missing."
+          echo "See docs/APPLE_SIGNING.md for the required apple environment secrets."
+          exit 1
+
+      - name: Import Developer ID Application certificate
+        if: env.SIGNED_BUILD == 'true' && env.APPLE_CREDENTIALS_CONFIGURED == 'true'
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+        run: |
+          CERTIFICATE_PATH="$RUNNER_TEMP/standup-developer-id.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/standup-signing.keychain-db"
+
+          printf '%s' "$APPLE_CERTIFICATE" | openssl base64 -d -A -out "$CERTIFICATE_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security import "$CERTIFICATE_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s \
+            -k "$KEYCHAIN_PASSWORD" \
+            "$KEYCHAIN_PATH"
+
+          SIGNING_IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | sed -n 's/.*"\(Developer ID Application:.*\)"/\1/p' | head -n 1)"
+          if [ -z "$SIGNING_IDENTITY" ]; then
+            echo "No Developer ID Application identity was found in the imported certificate."
+            exit 1
+          fi
+
+          echo "APPLE_SIGNING_IDENTITY=$SIGNING_IDENTITY" >> "$GITHUB_ENV"
+          echo "STANDUP_KEYCHAIN_PATH=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+          rm -f "$CERTIFICATE_PATH"
+
+      - name: Prepare App Store Connect notarization key
+        if: env.SIGNED_BUILD == 'true' && env.APPLE_CREDENTIALS_CONFIGURED == 'true'
+        env:
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        run: |
+          API_KEY_PATH="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+          printf '%s' "$APPLE_API_KEY_BASE64" | openssl base64 -d -A -out "$API_KEY_PATH"
+          chmod 600 "$API_KEY_PATH"
+          echo "APPLE_API_KEY_PATH=$API_KEY_PATH" >> "$GITHUB_ENV"
+
+      - name: Use ad-hoc signing for validation builds
+        if: env.SIGNED_BUILD != 'true'
+        run: echo "APPLE_SIGNING_IDENTITY=-" >> "$GITHUB_ENV"
+
+      - name: Build signed and notarized DMG
+        if: env.SIGNED_BUILD == 'true' && env.APPLE_CREDENTIALS_CONFIGURED == 'true'
+        env:
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+        run: npm run dist:mac
+
+      - name: Build validation DMG
+        if: env.SIGNED_BUILD != 'true'
+        run: npm run dist:mac
+
+      - name: Verify signed and notarized application
+        if: env.SIGNED_BUILD == 'true' && env.APPLE_CREDENTIALS_CONFIGURED == 'true'
+        run: |
+          APP_PATH="src-tauri/target/aarch64-apple-darwin/release/bundle/macos/StandUp.app"
+          DMG_PATH="$(find src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -name '*.dmg' -print -quit)"
+          test -d "$APP_PATH"
+          test -f "$DMG_PATH"
+          codesign --verify --deep --strict --verbose=2 "$APP_PATH"
+          xcrun stapler validate "$APP_PATH"
+          xcrun stapler validate "$DMG_PATH"
+          spctl --assess --type execute --verbose=2 "$APP_PATH"
+
+      - name: Create macOS checksum
+        run: |
+          DMG_PATH="$(find src-tauri/target/aarch64-apple-darwin/release/bundle/dmg -name '*.dmg' -print -quit)"
+          test -f "$DMG_PATH"
+          shasum -a 256 "$DMG_PATH" > "$DMG_PATH.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: StandUp-macOS-Apple-Silicon
+          path: |
+            src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg
+            src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.sha256
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Remove temporary Apple credentials
+        if: always() && env.SIGNED_BUILD == 'true'
+        run: |
+          rm -f "${APPLE_API_KEY_PATH:-}"
+          if [ -n "${STANDUP_KEYCHAIN_PATH:-}" ] && [ -f "$STANDUP_KEYCHAIN_PATH" ]; then
+            security delete-keychain "$STANDUP_KEYCHAIN_PATH" || true
+          fi

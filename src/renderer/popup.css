@@ -21,9 +21,6 @@ body {
   will-change: transform, opacity;
 }
 
-.gif-animation,
-.lottie-animation,
-.lottie-animation canvas,
 .mello-stage,
 .mello-canvas {
   display: block;
@@ -32,8 +29,50 @@ body {
   object-fit: contain;
 }
 
+.gif-animation {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: block;
+  width: 256px;
+  height: 384px;
+  object-fit: contain;
+  transform: translate(-50%, -50%);
+}
+
+.reminder[data-position$="-left"] .gif-animation {
+  left: 0;
+  transform: translateY(-50%);
+}
+
+.reminder[data-position$="-right"] .gif-animation {
+  right: 0;
+  left: auto;
+  transform: translateY(-50%);
+}
+
+.reminder[data-position^="top-"] .gif-animation {
+  top: 0;
+  transform: translateX(-50%);
+}
+
+.reminder[data-position^="bottom-"] .gif-animation {
+  top: auto;
+  bottom: 0;
+  transform: translateX(-50%);
+}
+
+.reminder[data-position="top-left"] .gif-animation,
+.reminder[data-position="bottom-left"] .gif-animation {
+  transform: none;
+}
+
+.reminder[data-position="top-right"] .gif-animation,
+.reminder[data-position="bottom-right"] .gif-animation {
+  transform: none;
+}
+
 .gif-animation[hidden],
-.lottie-animation[hidden],
 .mello-stage[hidden] {
   display: none;
 }
@@ -45,13 +84,24 @@ body {
 .mello-canvas {
   position: absolute;
   inset: 0;
+  pointer-events: none;
+}
+
+.reminder.mello-interactive .mello-canvas {
+  pointer-events: auto;
+  cursor: grab;
+  touch-action: none;
+}
+
+.reminder.mello-interactive .mello-canvas.is-grabbing {
+  cursor: grabbing;
 }
 
 .mello-message {
   position: absolute;
   z-index: 1;
-  top: 48px;
-  left: 50%;
+  top: var(--mello-message-y, 92px);
+  left: var(--mello-message-x, 68%);
   display: grid;
   min-width: 132px;
   padding: 10px 18px 9px;
@@ -64,23 +114,43 @@ body {
   text-align: center;
   transform: translateX(-50%) rotate(-1.5deg);
   box-shadow: 0 5px 0 rgba(45, 47, 52, 0.14);
+  pointer-events: none;
+  transition: top 80ms linear, left 80ms linear;
 }
 
-.mello-message strong {
-  font-size: 19px;
-  letter-spacing: -0.35px;
+.mello-message-text {
+  max-width: 150px;
+  font-size: 15px;
+  font-weight: 720;
+  letter-spacing: -0.18px;
+  line-height: 1.18;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 
-.mello-message span {
-  margin-top: 4px;
+.mello-move {
+  display: block;
+  max-width: 160px;
+  margin-top: 5px;
+  color: rgba(48, 50, 55, 0.72);
   font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.25px;
-  opacity: 0.68;
+  font-weight: 620;
+  line-height: 1.15;
+}
+
+.mello-move[hidden] { display: none; }
+
+.reminder[data-purpose="peek"] .mello-message,
+.reminder[data-purpose="celebration"] .mello-message {
+  padding-inline: 16px;
 }
 
 .reminder.is-showing {
-  animation: show-from-right 8s cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: show-from-right var(--reminder-duration, 8s) cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.reminder.is-showing.is-interacting {
+  animation-play-state: paused;
 }
 
 .reminder.is-showing[data-position^="top-"] {

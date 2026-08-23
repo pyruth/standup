@@ -24,7 +24,7 @@ build.
 - Pause/resume commands, single-instance behavior, launch at login, and tray
   controls.
 - Fresh click-through window for every reminder with a renderer-ready
-  checkpoint, custom-animation fallback, and guarded eight-second lifecycle.
+  checkpoint, Mello fallback, and guarded eight-second lifecycle.
 - Mello spring physics with cursor-aware eyes and body lean, ten small behavior
   variations, six muted palettes, reduced-motion support, and a different
   deterministic five-action performance on each appearance. Cursor coordinates
@@ -32,15 +32,15 @@ build.
 - Work-area-aware nine-position placement and monitor selection with primary
   monitor fallback.
 - Strict local-only CSP and no updater/network dependencies.
-- Settings UI for timing, position, monitor, sound choice, local AI prompt
-  construction, preview, and reset-to-default.
+- Approved Mello-based settings UI with System, Light, and Dark themes; separate
+  Animation, General, Reminders, Schedule, Shortcuts, Snooze & DND, and About
+  pages; and a combined setup preview.
 - Native system beep and bundled original one- and two-second offline chimes.
-- Secure custom animation picker with bounded reads, GIF decode/re-encode
-  sanitization, and vector-only Lottie JSON validation. Lottie imports reject
-  expressions, external or embedded assets, images, text, fonts, audio, and
-  excessive complexity or recursive precompositions. Import validation runs
-  away from the settings UI. Both formats use atomic private storage, an
-  explicit selected-animation preview, corruption fallback, and reset to Mello.
+- Mello/Original GIF visual choice, Calm/Playful motion, pointer reaction,
+  fixed/random color, operating-system reduced-motion support, and the approved
+  happy Mello application and installer icon.
+- Windows fullscreen deferral using only window geometry, without titles,
+  application content, Accessibility access, or Screen Recording access.
 - Live tray status showing remaining time, pause time, due state, or popup state.
 - Native Rust unit tests plus existing TypeScript tests.
 
@@ -51,7 +51,7 @@ build.
 - Display hot-plug handling while the popup is already visible.
 - Native full-screen behavior verification on macOS.
 - Signed/notarized macOS distribution and signed Windows distribution.
-- End-to-end installer smoke tests plus malformed GIF and Lottie corpus tests.
+- End-to-end installer smoke tests on both supported platforms.
 
 ## Local prerequisites
 

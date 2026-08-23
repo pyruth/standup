@@ -11,14 +11,12 @@ export const standUpApi = {
   updateSettings: (patch: SettingsPatch) =>
     invoke<StandUpSettings>('update_settings', { patch }),
   getTimerStatus: () => invoke<TimerStatus>('get_timer_status'),
-  pauseTimer: (minutes: 30 | 60) =>
+  pauseTimer: (minutes: 30 | 60 | 120) =>
     invoke<void>('pause_timer', { minutes }),
+  pauseUntil: (mode: 'tomorrow' | 'next-schedule') =>
+    invoke<number>('pause_until_timer', { mode }),
   resumeTimer: () => invoke<void>('resume_timer'),
   previewReminder: () => invoke<void>('preview_reminder'),
   previewSound: () => invoke<void>('preview_sound'),
-  listMonitors: () => invoke<MonitorOption[]>('list_monitors'),
-  chooseCustomAnimation: () =>
-    invoke<StandUpSettings | null>('choose_custom_animation'),
-  resetCustomAnimation: () =>
-    invoke<StandUpSettings>('reset_custom_animation')
+  listMonitors: () => invoke<MonitorOption[]>('list_monitors')
 } as const;
